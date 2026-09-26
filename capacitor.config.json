@@ -2,5 +2,9 @@
   "appId": "com.cagriuguz.mathx",
   "appName": "MathX",
   "webDir": "dist",
+  "server": {
+    "url": "https://cagriuguz.github.io/mathx/",
+    "errorPath": "cevrimdisi.html"
+  },
   "android": { "backgroundColor": "#16233B" }
 }
