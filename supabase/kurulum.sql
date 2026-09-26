@@ -123,6 +123,16 @@ alter table public.homework add column if not exists wa_given_at timestamptz;   
 alter table public.homework add column if not exists wa_done_at timestamptz;           -- otomatik "ödev yapıldı" gitti
 -- Erişim anahtarı: RLS açık ve HİÇ kural yok → hiçbir hesap okuyamaz/yazamaz; yalnız aşağıdaki işlevler
 -- ve sunucu işlevi (service role) erişir. Öğretmen anahtarı bir kez yazar, bir daha göremez.
+-- Öğrenci/veli giriş şifreleri: yalnızca öğretmen görür (öğretmen unutulan şifreyi tekrar söyleyebilsin diye).
+-- Veli ve öğrenci bu tabloyu HİÇ okuyamaz (RLS'de yalnız teacher_all kuralı var).
+create table if not exists public.logins (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid not null unique references public.students(id) on delete cascade,
+  student_pw text default '',
+  parent_pw text default '',
+  updated_at timestamptz default now()
+);
+
 create table if not exists public.wa_config (
   id text primary key default 'main',
   business_phone text default '',
@@ -229,11 +239,12 @@ alter table public.homework enable row level security;
 alter table public.expenses enable row level security;
 alter table public.expense_payments enable row level security;
 alter table public.settings enable row level security;
+alter table public.logins enable row level security;
 
 do $$ declare t text; begin
   -- Eski kuralları temizle (yeniden çalıştırmada çakışmasın)
   for t in select tablename from pg_tables where schemaname = 'public' and tablename in
-    ('profiles','students','schedules','plans','marks','payments','books','homework','expenses','expense_payments','settings') loop
+    ('profiles','students','schedules','plans','marks','payments','books','homework','expenses','expense_payments','settings','logins') loop
     execute format('drop policy if exists teacher_all on public.%I', t);
     execute format('drop policy if exists parent_read on public.%I', t);
     execute format('drop policy if exists own_read on public.%I', t);
@@ -253,7 +264,7 @@ create policy parent_read on public.homework  for select to authenticated using 
 
 -- ───────────── Anlık güncelleme (bir telefonda yapılan değişiklik diğerlerinde hemen görünür)
 do $$ declare t text; begin
-  foreach t in array array['students','schedules','plans','marks','payments','books','homework','expenses','expense_payments','settings'] loop
+  foreach t in array array['students','schedules','plans','marks','payments','books','homework','expenses','expense_payments','settings','logins'] loop
     begin execute format('alter publication supabase_realtime add table public.%I', t);
     exception when duplicate_object then null; end;
   end loop;

@@ -39,6 +39,7 @@ async function setup() {
     insert into public.homework(id,student_id,given_date,due_date) values ('20000000-0000-0000-0000-00000000000a','${S.A}','2026-09-02','2026-09-09'),('20000000-0000-0000-0000-00000000000b','${S.B}','2026-09-02','2026-09-09');
     insert into public.books(name) values ('Kitap');
     insert into public.expenses(name,amount,start_month) values ('Kira',1000,'2026-09');
+    insert into public.logins(student_id,student_pw,parent_pw) values ('${S.A}','ogr-sifre','veli-sifre'),('${S.B}','o2','v2');
   `);
   return db;
 }
@@ -74,12 +75,16 @@ test('güvenlik kuralları (RLS)', async () => {
     assert.equal(await rejects(db.query(`select public.set_wa_config('1','2','cal')`)), true, 'veli WhatsApp ayarı yazamaz');
     assert.equal(await rejects(db.query(`select public.wa_config_status()`)), true, 'veli WhatsApp durumunu göremez');
     assert.equal(await count(db, 'wa_config'), 0, 'veli anahtar tablosunu göremez');
+    assert.equal(await count(db, 'logins'), 0, 'veli şifre tablosunu (öğrencinin şifresi dahil) göremez');
+    await db.query(`update public.logins set parent_pw = 'x'`);
+    assert.equal(await rejects(db.query(`insert into public.logins(student_id,student_pw,parent_pw) values ('${S.B}','a','b')`)), true, 'veli şifre ekleyemez');
   });
 
   // ÖĞRENCİ A: yalnızca kendi ödevi; ödeme/ders/öğrenci tablosu yok
   await as(db, U.sA, async () => {
     assert.equal(await count(db, 'homework'), 1);
     for (const t of ['students', 'schedules', 'plans', 'marks', 'payments', 'books', 'expenses', 'settings']) assert.equal(await count(db, t), 0, `öğrenci ${t} görmemeli`);
+    assert.equal(await count(db, 'logins'), 0, 'öğrenci şifre tablosunu (velinin şifresi dahil) göremez');
     await db.query(`select public.set_homework_done('20000000-0000-0000-0000-00000000000a', true)`);
     assert.equal(await rejects(db.query(`select public.set_homework_done('20000000-0000-0000-0000-00000000000b', true)`)), true, 'başka öğrencinin ödevi');
     // "Yaptım" kilidi: öğrenci geri alamaz, ikinci basış işaret tarihini değiştirmez
@@ -120,6 +125,8 @@ test('güvenlik kuralları (RLS)', async () => {
     assert.equal(await count(db, 'wa_config'), 0, 'öğretmen bile anahtar tablosunu doğrudan okuyamaz');
     assert.equal(await count(db, 'students'), 2);
     assert.equal(await count(db, 'payments'), 2);
+    assert.equal(await count(db, 'logins'), 2, 'öğretmen şifreleri görür');
+    assert.equal((await db.query(`select parent_pw from public.logins where student_id = '${S.A}'`)).rows[0].parent_pw, 'veli-sifre', 'velinin yazma denemesi etkisiz kalmalı');
     await db.query(`select public.admin_set_password('ali', 'Yeni-1234')`);
     assert.equal(await rejects(db.query(`select public.admin_set_password('ogretmen', 'x')`)), true, 'öğretmen şifresi bu yolla değişmez');
     assert.equal((await db.query(`select public.username_taken('ali') as x`)).rows[0].x, true);

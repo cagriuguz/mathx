@@ -62,6 +62,8 @@ export function createSupabaseStore({ url, anonKey }) {
       await Promise.all(TABLES.map(async (t) => {
         if (!ROLE_TABLES[profile.role].includes(t)) { out[t] = []; return; }
         const { data, error } = await sb.from(t).select('*');
+        // Şifre tablosu henüz kurulmamışsa (güncelleme SQL'i çalışmadan önce) program yine açılsın
+        if (error && t === 'logins') { out[t] = []; return; }
         fail(error, `${t} okunamadı`);
         out[t] = data || [];
       }));

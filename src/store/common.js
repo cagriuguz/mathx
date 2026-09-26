@@ -1,7 +1,8 @@
 // Ortak yardımcılar: kullanıcı adı, şifre üretimi, tablo listesi.
 
-export const TABLES = ['students', 'schedules', 'plans', 'marks', 'payments', 'books', 'homework', 'expenses', 'expense_payments', 'settings'];
+export const TABLES = ['students', 'schedules', 'plans', 'marks', 'payments', 'books', 'homework', 'expenses', 'expense_payments', 'settings', 'logins'];
 
+// logins = öğrenci/veli şifreleri: YALNIZCA öğretmen görür (aşağıda veli/öğrenci listesinde yok).
 // Rol başına görünen tablolar (Supabase'de bu kural veritabanında RLS ile ayrıca zorunlu tutulur).
 export const ROLE_TABLES = {
   teacher: TABLES,

@@ -13,9 +13,26 @@ import { PaymentSheet } from './Money.jsx';
 const FEE_LABEL = { weekly: 'Haftalık ücret (TL)', '4weekly': '4 haftalık ücret (TL)', monthly: 'Aylık ücret (TL)', oneoff: 'Paket tutarı (TL)' };
 const siteUrl = () => SITE_URL || (location.protocol.startsWith('http') ? location.origin + location.pathname : '');
 
-export function credentialsMessage(s, pwS, pwP) {
+// Veli ve öğrenci birbirinin şifresini görmesin: her birine yalnızca kendi giriş bilgisi gider.
+export function credentialsMessage(s, pw, who) {
   const url = siteUrl();
-  return `Sayın veli, MathX giriş bilgileriniz:${url ? `\nAdres: ${url}` : ''}\n\nVeli girişi\nKullanıcı adı: ${s.parent_username}\nŞifre: ${pwP}\n\nÖğrenci girişi\nKullanıcı adı: ${s.student_username}\nŞifre: ${pwS}`;
+  const adr = url ? `\nAdres: ${url}` : '';
+  return who === 'parent'
+    ? `Sayın veli, MathX giriş bilgileriniz:${adr}\nKullanıcı adı: ${s.parent_username}\nŞifre: ${pw}`
+    : `Merhaba ${s.name.split(' ')[0]}, MathX giriş bilgilerin:${adr}\nKullanıcı adı: ${s.student_username}\nŞifre: ${pw}`;
+}
+
+// Şifreleri öğretmenin panelinde sakla (logins tablosu; veli ve öğrenci okuyamaz).
+async function saveLogins(store, data, studentId, pwS, pwP) {
+  const row = { student_pw: pwS, parent_pw: pwP, updated_at: new Date().toISOString() };
+  const old = (data.logins || []).find((x) => x.student_id === studentId);
+  try {
+    if (old) await store.update('logins', old.id, row);
+    else await store.insert('logins', { student_id: studentId, ...row });
+  } catch (e) {
+    // Saklanamasa da hesap açma/şifre yenileme bozulmasın (ör. güncelleme SQL'i henüz çalışmadıysa)
+    console.warn('Şifreler saklanamadı:', e.message);
+  }
 }
 
 export function scheduleText(slots) {
@@ -144,7 +161,7 @@ const planRow = (plan, student_id, valid_from) => ({
 });
 
 function StudentForm({ onClose }) {
-  const { store, reload, now } = useApp();
+  const { data, store, reload, now } = useApp();
   const [run, busy] = useAction();
   const [f, setF] = useState({ name: '', phone: '', parent_name: '', parent_phone: '', start_date: now.date, note: '', consent: false, su: '', pu: '' });
   const [slots, setSlots] = useState([{ dow: 2, time: '17:00', hours: 1 }]);
@@ -183,6 +200,7 @@ function StudentForm({ onClose }) {
         await store.insert('plans', planRow(plan, s.id, f.start_date));
         await store.createAccount({ username: su, password: pw[0], role: 'student', student_id: s.id });
         await store.createAccount({ username: pu, password: pw[1], role: 'parent', student_id: s.id });
+        await saveLogins(store, data, s.id, pw[0], pw[1]);
       } catch (x) {
         await store.deleteAccountsFor(s.id).catch(() => {});
         await store.remove('students', s.id).catch(() => {});
@@ -241,21 +259,32 @@ function StudentForm({ onClose }) {
 }
 
 function CredentialsSheet({ student, pwS, pwP, onClose, title }) {
-  const text = credentialsMessage(student, pwS, pwP);
+  const known = !!(pwS || pwP);
+  const msgP = credentialsMessage(student, pwP, 'parent');
+  const msgS = credentialsMessage(student, pwS, 'student');
   return (
     <Sheet title={title} onClose={onClose}>
       <div class="stack">
-        <p class="muted" style="margin:0">Şifreler güvenlik için yalnızca şimdi gösterilir. Veliye gönderin ya da not alın; unutulursa öğrenci kartından yenisini oluşturabilirsiniz.</p>
+        <p class="muted" style="margin:0">{known
+          ? 'Şifreler yalnızca sizin panelinizde saklanır. Veli öğrencinin, öğrenci velinin şifresini göremez; her birine yalnızca kendi bilgisi gönderilir.'
+          : 'Bu öğrencinin şifreleri, şifre saklama özelliğinden önce oluşturulduğu için kayıtlı değil. "Şifreleri yenile" ile yeni şifre verin; yenileri burada saklanır.'}</p>
         <div class="grid2">
-          <div class="cred"><div><div class="small muted">Öğrenci · {student.student_username}</div><code>{pwS}</code></div></div>
-          <div class="cred"><div><div class="small muted">Veli · {student.parent_username}</div><code>{pwP}</code></div></div>
+          <div class="cred"><div><div class="small muted">Öğrenci · {student.student_username}</div><code>{pwS || '—'}</code></div></div>
+          <div class="cred"><div><div class="small muted">Veli · {student.parent_username}</div><code>{pwP || '—'}</code></div></div>
         </div>
-        <div class="msg">{text}</div>
-        <div class="row wrap">
-          <WaButton phone={student.parent_phone} text={text} label="Veliye gönder" />
-          <button class="btn" onClick={() => copyText(text)}><Icon name="copy" /> Kopyala</button>
-          <button class="btn ghost" onClick={onClose}>Tamam</button>
-        </div>
+        {known && (<>
+          <div class="msg">{msgP}</div>
+          <div class="row wrap">
+            <WaButton phone={student.parent_phone} text={msgP} label="Veliye gönder" />
+            <button class="btn" onClick={() => copyText(msgP)}><Icon name="copy" /> Kopyala</button>
+          </div>
+          <div class="msg">{msgS}</div>
+          <div class="row wrap">
+            {student.phone && <WaButton phone={student.phone} text={msgS} label="Öğrenciye gönder" />}
+            <button class="btn" onClick={() => copyText(msgS)}><Icon name="copy" /> Kopyala</button>
+          </div>
+        </>)}
+        <div><button class="btn ghost" onClick={onClose}>Tamam</button></div>
       </div>
     </Sheet>
   );
@@ -280,8 +309,15 @@ function StudentDetail({ id, onClose }) {
     const [a, b] = generatePasswordPair();
     await store.setPassword({ username: s.student_username, password: a });
     await store.setPassword({ username: s.parent_username, password: b });
+    await saveLogins(store, data, s.id, a, b);
+    await reload();
     setCreds({ student: s, pwS: a, pwP: b });
   }, 'Yeni şifreler oluşturuldu');
+
+  const showPw = () => {
+    const l = (data.logins || []).find((x) => x.student_id === s.id);
+    setCreds({ student: s, pwS: l?.student_pw || '', pwP: l?.parent_pw || '', title: 'Giriş bilgileri' });
+  };
 
   const toggleActive = () => {
     if (s.active !== false) {
@@ -298,7 +334,7 @@ function StudentDetail({ id, onClose }) {
     run(async () => { await store.deleteAccountsFor(s.id); await store.remove('students', s.id); onClose(); await reload(); }, 'Öğrenci silindi');
   };
 
-  if (creds) return <CredentialsSheet {...creds} title="Yeni şifreler" onClose={() => setCreds(null)} />;
+  if (creds) return <CredentialsSheet title="Yeni şifreler" {...creds} onClose={() => setCreds(null)} />;
   if (mode === 'edit') return <EditSheet s={s} onClose={() => setMode(null)} />;
   if (mode === 'program') return <ProgramSheet s={s} sch={sch} plan={plan} onClose={() => setMode(null)} />;
   if (paying) return <PaymentSheet period={paying} onClose={() => setPaying(null)} />;
@@ -314,6 +350,7 @@ function StudentDetail({ id, onClose }) {
             <li class="spread"><span class="muted">Ödeme</span><span class="right">{plan ? `${PLAN_TYPES[plan.type]} · ${fmtTL(plan.fee)}` : '—'}</span></li>
             <li class="spread"><span class="muted">Başlangıç</span><span>{fmtDate(s.start_date)}{s.active === false ? ` · bitiş ${fmtDate(s.end_date)}` : ''}</span></li>
             <li class="spread"><span class="muted">Kullanıcı adları</span><span class="right">Öğrenci: {s.student_username}<br />Veli: {s.parent_username}</span></li>
+            <li class="spread"><span class="muted">Şifreler</span><button class="btn small" onClick={showPw}><Icon name="key" /> Şifreleri göster</button></li>
             <li class="spread"><span class="muted">Ödevler</span><span>{hw.filter((h) => h.done).length} / {hw.length} yapıldı</span></li>
           </ul>
         </div>
