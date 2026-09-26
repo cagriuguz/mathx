@@ -72,6 +72,9 @@ create table if not exists public.books (
   name text not null,
   active boolean not null default true
 );
+-- Kitaplar öğrenciye özel (boş = eski ortak listeden kalan, atanmamış kitap)
+alter table public.books add column if not exists student_id uuid references public.students(id) on delete cascade;
+create index if not exists books_student_idx on public.books(student_id);
 
 create table if not exists public.homework (
   id uuid primary key default gen_random_uuid(),

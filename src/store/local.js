@@ -46,7 +46,7 @@ async function seed() {
     const iso = addDays(today, -n);
     if (dow(iso) === 2) { db.marks.push({ id: uid(), student_id: d0.id, date: iso, time: '17:00', reason: 'Okul gezisi nedeniyle gelemedi', created_at: new Date().toISOString() }); break; }
   }
-  const books = ['Karekök 7', 'Limit Yayınları', 'Bilfen Soru Bankası', 'Palme Fasikül'].map((name) => ({ id: uid(), name, active: true }));
+  const books = [['Karekök 7', 0], ['Limit Yayınları', 0], ['Bilfen Soru Bankası', 1], ['Palme Fasikül', 2]].map(([name, i]) => ({ id: uid(), name, active: true, student_id: db.students[i].id }));
   db.books = books;
   db.homework.push({ id: uid(), student_id: d0.id, given_date: addDays(today, -3), due_date: addDays(today, 2), items: [{ book_id: books[0].id, book_name: books[0].name, pages: '12-20' }, { book_id: books[1].id, book_name: books[1].name, pages: '45-48' }], note: '', done: false, done_at: null, sent_given: true, sent_done: false, seen_done: true });
   db.homework.push({ id: uid(), student_id: db.students[1].id, given_date: addDays(today, -6), due_date: addDays(today, -1), items: [{ book_id: books[2].id, book_name: books[2].name, pages: '30-34' }], note: '', done: true, done_at: new Date().toISOString(), sent_given: true, sent_done: false, seen_done: false });

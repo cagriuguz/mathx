@@ -253,3 +253,25 @@ test('kullanıcı adı: telefon klavyesinin baştaki/sondaki boşluğu nokta olm
   assert.equal(cleanUsername('  Ayşe Veli  '), 'ayse.veli');
   assert.equal(cleanUsername('ÇAĞRI'), 'cagri');
 });
+
+test('kitaplar öğrenciye özel: yalnız o öğrencinin kitabı, tekrar engeli, eski ortak kitaplar ayrı', async () => {
+  const { studentBooks, unassignedBooks, hasBook, bookSuggestions, cleanBookName } = await import('../src/core/books.js');
+  const books = [
+    { id: 1, name: 'Limit 8', student_id: 'a', active: true },
+    { id: 2, name: 'Karekök 7', student_id: 'a', active: false },
+    { id: 3, name: 'Karekök 7', student_id: 'b', active: true },
+    { id: 4, name: 'Eski Kitap', student_id: null, active: true },
+    { id: 5, name: 'Bilfen', active: true }, // sütun eklenmeden önceki satır
+  ];
+  assert.deepEqual(studentBooks(books, 'a').map((b) => b.id), [2, 1]);
+  assert.deepEqual(studentBooks(books, 'a', { onlyActive: true }).map((b) => b.id), [1]);
+  assert.deepEqual(studentBooks(books, 'c'), []);
+  assert.deepEqual(studentBooks(books, ''), [], 'öğrenci seçilmeden hiçbir kitap görünmez');
+  assert.deepEqual(unassignedBooks(books).map((b) => b.id), [5, 4]);
+  assert.equal(hasBook(books, 'a', '  karekök   7 '), true);
+  assert.equal(hasBook(books, 'c', 'Karekök 7'), false);
+  assert.equal(hasBook(books, 'a', 'LİMİT 8'), true, 'Türkçe büyük harf de aynı kitap sayılır');
+  assert.deepEqual(bookSuggestions(books, 'a'), ['Bilfen', 'Eski Kitap']);
+  assert.equal(cleanBookName('  Palme   Fasikül '), 'Palme Fasikül');
+  assert.equal(cleanBookName(null), '');
+});

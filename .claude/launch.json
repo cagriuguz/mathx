@@ -1,6 +1,25 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "mathx", "runtimeExecutable": "sh", "runtimeArgs": ["-c", "npx vite --port ${PORT:-5180} --strictPort"], "port": 5180, "autoPort": true }
+    {
+      "name": "mathx",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "npx vite --port ${PORT:-5180} --strictPort"
+      ],
+      "port": 5180,
+      "autoPort": true
+    },
+    {
+      "name": "mathx-deneme",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "VITE_DENEME=1 npx vite --port ${PORT:-5181} --strictPort"
+      ],
+      "port": 5181,
+      "autoPort": true
+    }
   ]
 }

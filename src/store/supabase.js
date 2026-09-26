@@ -12,6 +12,7 @@ function fail(error, fallback) {
   const m = error.message || '';
   if (/Invalid login credentials/i.test(m)) throw new Error('Kullanıcı adı ya da şifre hatalı.');
   if (/already registered|already been registered/i.test(m)) throw new Error('Bu kullanıcı adı zaten kullanılıyor.');
+  if (/student_id.*books|books.*student_id/i.test(m)) throw new Error('Öğrenci kitapları için veritabanı güncellemesi gerekiyor: supabase/guncelleme-2026-09-26d-ogrenci-kitaplari.sql dosyasını Supabase SQL Editor\'de bir kez çalıştırın.');
   if (/Failed to fetch|NetworkError/i.test(m)) throw new Error('İnternet bağlantısı yok. Bağlantıyı kontrol edip tekrar deneyin.');
   throw new Error(fallback ? `${fallback} (${m})` : m);
 }

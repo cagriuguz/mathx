@@ -37,7 +37,7 @@ async function setup() {
     insert into public.marks(student_id,date,time,reason) values ('${S.A}','2026-09-02','17:00','a'),('${S.B}','2026-09-02','17:00','b');
     insert into public.payments(student_id,period_key,amount,paid_date) values ('${S.A}','k',100,'2026-09-02'),('${S.B}','k',200,'2026-09-02');
     insert into public.homework(id,student_id,given_date,due_date) values ('20000000-0000-0000-0000-00000000000a','${S.A}','2026-09-02','2026-09-09'),('20000000-0000-0000-0000-00000000000b','${S.B}','2026-09-02','2026-09-09');
-    insert into public.books(name) values ('Kitap');
+    insert into public.books(name, student_id) values ('Kitap', null), ('Ali kitabı', '${S.A}');
     insert into public.expenses(name,amount,start_month) values ('Kira',1000,'2026-09');
     insert into public.logins(student_id,student_pw,parent_pw) values ('${S.A}','ogr-sifre','veli-sifre'),('${S.B}','o2','v2');
   `);
