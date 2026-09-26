@@ -1,0 +1,6 @@
+{
+  "appId": "com.cagriuguz.mathx",
+  "appName": "MathX",
+  "webDir": "dist",
+  "android": { "backgroundColor": "#16233B" }
+}
