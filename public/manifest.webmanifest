@@ -1,16 +1,60 @@
 {
   "name": "MathX",
   "short_name": "MathX",
-  "description": "Ders, ödev ve ödeme takibi",
+  "description": "Ders, ödev ve ödeme takibi: öğretmen, öğrenci ve veli için",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#16233B",
+  "background_color": "#121d33",
   "theme_color": "#16233B",
   "lang": "tr",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "id": "./",
+  "orientation": "portrait",
+  "categories": [
+    "education",
+    "productivity"
+  ],
+  "screenshots": [
+    {
+      "src": "screenshots/veli-odevler.png",
+      "sizes": "1080x2061",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Ödevler: verilen ödevler ve son tarihleri"
+    },
+    {
+      "src": "screenshots/veli-dersler.png",
+      "sizes": "1080x2061",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Dersler: yapılan ve yaklaşan dersler"
+    },
+    {
+      "src": "screenshots/veli-odemeler.png",
+      "sizes": "1080x2061",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "Ödemeler: dönem tutarı ve ödeme geçmişi"
+    }
   ]
 }

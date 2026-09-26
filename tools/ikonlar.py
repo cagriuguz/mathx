@@ -37,6 +37,42 @@ pub = ROOT / 'public'
 draw(192).save(pub / 'icon-192.png')
 draw(512).save(pub / 'icon-512.png')
 draw(180, rounded=False).save(pub / 'apple-touch-icon.png')
+# Android "maskable": tam dolu kare, logo güvenli bölgede (telefon kenarları kendi şekliyle kırpar)
+draw(512, rounded=False, pad=0.12).save(pub / 'icon-maskable-512.png')
+
+# iPhone açılış görselleri: simgeye dokununca beyaz ekran yerine lacivert zemin + parıltılı logo
+IPHONES = [  # (nokta genişlik, yükseklik, piksel oranı)
+    (440, 956, 3), (430, 932, 3), (428, 926, 3), (420, 912, 3), (414, 896, 3), (414, 896, 2), (402, 874, 3),
+    (393, 852, 3), (390, 844, 3), (375, 812, 3), (414, 736, 3), (375, 667, 2),
+]
+from PIL import ImageFilter
+spl = pub / 'splash'
+spl.mkdir(exist_ok=True)
+for old in spl.glob('*.png'):
+    old.unlink()
+tags = []
+for w, h, r in IPHONES:
+    W, H = w * r, h * r
+    bg = Image.new('RGB', (W, H), (18, 29, 51))
+    glow = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    gd = ImageDraw.Draw(glow)
+    R = int(W * 0.42)
+    gd.ellipse((W // 2 - R, H // 2 - R - int(H * 0.04), W // 2 + R, H // 2 + R - int(H * 0.04)), fill=(201, 162, 102, 70))
+    glow = glow.filter(ImageFilter.GaussianBlur(W * 0.12))
+    bg.paste(glow, (0, 0), glow)
+    size = int(W * 0.30)
+    logo = draw(size)
+    bg.paste(logo, ((W - size) // 2, (H - size) // 2 - int(H * 0.04)), logo)
+    name = f'iphone-{W}x{H}.png'
+    bg.save(spl / name, optimize=True)
+    tags.append(f'    <link rel="apple-touch-startup-image" media="(device-width: {w}px) and (device-height: {h}px) and (-webkit-device-pixel-ratio: {r}) and (orientation: portrait)" href="./splash/{name}" />')
+
+html = ROOT / 'index.html'
+t = html.read_text()
+a, b = '    <!-- iphone-acilis -->\n', '    <!-- /iphone-acilis -->\n'
+block = a + '\n'.join(tags) + '\n' + b
+t = t[:t.index(a)] + block + t[t.index(b) + len(b):] if a in t else t.replace('    <link rel="manifest"', block + '    <link rel="manifest"')
+html.write_text(t)
 
 res = ROOT / 'android/app/src/main/res'
 if res.exists():

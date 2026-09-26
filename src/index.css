@@ -358,9 +358,53 @@ table.t tr.current td { background: var(--brass-soft); }
 .stack, .stack-lg { grid-template-columns: minmax(0, 1fr); }
 
 /* Ana ekrana ekle kartı (giriş ekranı) */
-.login .install { display: flex; gap: 12px; align-items: flex-start; margin: 0 0 18px; padding: 14px; border-radius: 14px; background: rgba(255,255,255,.08); color: #fff; text-align: left; }
-.login .install img { width: 44px; height: 44px; border-radius: 10px; flex: none; }
-.login .install .small { opacity: .8; margin: 2px 0 8px; }
-.login .install .steps { font-size: 14px; line-height: 1.5; margin: 0; padding-left: 18px; }
-.login .install div.steps { padding-left: 0; }
-.login .install .btn.primary { background: #C9A266; border-color: #C9A266; color: #16233B; font-weight: 700; margin-top: 4px; }
+
+/* Karşılama ve yükleme ekranı (telefonda tarayıcıdan ilk açılış) */
+.welcome {
+  min-height: 100dvh; display: grid; place-items: center; color: #f5f6f8; overflow: hidden; position: relative;
+  padding: max(28px, env(safe-area-inset-top)) 20px max(28px, env(safe-area-inset-bottom));
+  background:
+    radial-gradient(120% 60% at 50% -10%, rgba(201, 162, 102, 0.28), transparent 60%),
+    radial-gradient(90% 50% at 50% 115%, rgba(72, 104, 160, 0.35), transparent 65%),
+    #121d33;
+}
+.welcome::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .9;
+  background-image: linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px);
+  background-size: 24px 24px; mask-image: radial-gradient(circle at 50% 30%, #000 20%, transparent 75%);
+  -webkit-mask-image: radial-gradient(circle at 50% 30%, #000 20%, transparent 75%);
+}
+.wpanel { position: relative; width: 100%; max-width: 400px; text-align: center; animation: wrise .7s cubic-bezier(.2,.8,.2,1) both; }
+.wicon { width: 104px; height: 104px; margin: 0 auto 18px; border-radius: 26px; position: relative;
+  box-shadow: 0 0 0 1px rgba(201,162,102,.35), 0 18px 40px -12px rgba(0,0,0,.7), 0 0 60px -6px rgba(201,162,102,.45); animation: wglow 3.2s ease-in-out infinite; }
+.wicon img { width: 100%; height: 100%; border-radius: 26px; display: block; }
+.welcome h1 { font-family: var(--serif); font-weight: 400; font-size: 46px; margin: 0; letter-spacing: -.5px;
+  background: linear-gradient(180deg, #fff 30%, #e6cf9f); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.wtag { margin: 6px 0 20px; color: rgba(245,246,248,.72); line-height: 1.5; }
+.wfeat { list-style: none; margin: 0 0 22px; padding: 0; display: flex; justify-content: center; gap: 6px; }
+.wfeat li { display: flex; align-items: center; gap: 5px; font-size: 12.5px; white-space: nowrap; padding: 6px 10px; border-radius: 999px;
+  background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); color: rgba(245,246,248,.9); }
+.wfeat span { width: 15px; height: 15px; flex: none; color: #d9b980; display: inline-flex; }
+.wfeat svg, .wico svg, .wok svg { width: 100%; height: 100%; }
+.wcard { text-align: left; padding: 20px; border-radius: 22px; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: 0 30px 60px -30px rgba(0,0,0,.7); }
+.wh { display: block; font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+.wsub { margin: 0 0 14px; font-size: 14px; color: rgba(245,246,248,.75); line-height: 1.5; }
+.wbtn { width: 100%; border: 0; border-radius: 14px; padding: 15px 18px; font: inherit; font-size: 17px; font-weight: 700; color: #16233b; cursor: pointer;
+  background: linear-gradient(180deg, #e2c48d, #c9a266); box-shadow: 0 10px 24px -10px rgba(201,162,102,.8), inset 0 1px 0 rgba(255,255,255,.5); margin-bottom: 4px; }
+.wbtn:active { transform: scale(.98); }
+.wsteps { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
+.wstep { display: grid; grid-template-columns: 28px 1fr auto; gap: 12px; align-items: center; padding: 10px 12px; border-radius: 14px;
+  background: rgba(0,0,0,.18); border: 1px solid rgba(255,255,255,.06); font-size: 14.5px; line-height: 1.45; }
+.wn { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 14px; color: #16233b; background: #d9b980; }
+.wico { width: 30px; height: 30px; padding: 5px; border-radius: 9px; color: #6aa7ff; background: rgba(255,255,255,.95); display: inline-flex; box-sizing: border-box; }
+.wtxt b { color: #fff; }
+.wdone { text-align: center; }
+.wdone p { margin: 6px 0 0; font-size: 14.5px; line-height: 1.5; color: rgba(245,246,248,.8); }
+.wok { width: 48px; height: 48px; margin: 0 auto 10px; padding: 11px; border-radius: 50%; color: #fff; background: #2f7a5b; box-sizing: border-box; box-shadow: 0 0 0 6px rgba(47,122,91,.25); }
+.wnote { margin: 18px 4px 6px; font-size: 13px; line-height: 1.55; color: rgba(245,246,248,.6); }
+.wskip { border: 0; background: none; color: rgba(245,246,248,.75); font: inherit; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; padding: 10px; cursor: pointer; }
+.wback { display: block; margin: -14px auto 20px; border: 1px solid rgba(201,162,102,.5); background: rgba(201,162,102,.12); color: #e6cf9f; font: inherit; font-size: 14px; font-weight: 600; padding: 8px 16px; border-radius: 999px; cursor: pointer; }
+@keyframes wrise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes wglow { 50% { box-shadow: 0 0 0 1px rgba(201,162,102,.5), 0 18px 40px -12px rgba(0,0,0,.7), 0 0 80px -4px rgba(201,162,102,.6); } }
+@media (prefers-reduced-motion: reduce) { .wpanel, .wicon { animation: none; } }

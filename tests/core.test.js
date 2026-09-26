@@ -288,4 +288,5 @@ test('ana ekrana ekle: telefona ve tarayıcıya göre doğru yönlendirme', asyn
   assert.equal(installKind(mac, false, false), null, 'bilgisayarda kart çıkmaz');
   assert.equal(installKind(android, true, false), null, 'ana ekrandan açılınca kart çıkmaz');
   assert.equal(installKind(android, false, true), null, 'APK içinde kart çıkmaz');
+  assert.equal(installKind('Mozilla/5.0 (Linux; Android 14; SM-A546B Build/UP1A; wv) AppleWebKit/537.36 Chrome/128.0 Mobile Safari/537.36 Instagram 350.0', false, false), 'android-inapp', 'Instagram içi tarayıcı');
 });
