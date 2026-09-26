@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'preact/hooks';
 import { useApp, Field } from '../ui.jsx';
 import { cleanUsername, checkUsername } from '../store/common.js';
+import { Kurulum } from './Kurulum.jsx';
+import { readConn, wantsSetup } from '../store/conn.js';
 import { installKind, canPrompt, promptInstall, onInstallChange, wasInstalled } from '../core/install.js';
 
 const I = {
@@ -95,6 +97,9 @@ function Welcome({ kind, onSkip }) {
   );
 }
 
+// Veli/öğrenci öğretmeninin linkiyle geldiyse (db=...) bağlantı ayarını görmesin
+const viaLink = () => { try { return new URLSearchParams(location.search).has('db'); } catch { return false; } };
+
 const SKIP_KEY = 'mathx_kurulum_gec';
 const readSkip = () => { try { return sessionStorage.getItem(SKIP_KEY) === '1'; } catch { return false; } };
 
@@ -109,6 +114,8 @@ export function Login({ onLogin }) {
   // Geliştirirken ?onizle=ios-safari|ios-other|android|android-inapp ile ekran önizlenir (yayında etkisiz)
   const [kind] = useState(() => { try { return (import.meta.env.DEV && new URLSearchParams(location.search).get('onizle')) || installKind(); } catch { return null; } });
   const [skip, setSkip] = useState(readSkip);
+  // Arkadaş öğretmen: "?kur" linkiyle gelip henüz kendi veritabanına bağlanmadıysa kurulum ekranı açılır
+  const [kur, setKur] = useState(() => store.mode === 'online' && wantsSetup() && !readConn());
 
   useEffect(() => {
     if (store.mode === 'online') store.teacherExists().then((x) => setSetup(!x)).catch((e) => setErr(e.message));
@@ -134,6 +141,7 @@ export function Login({ onLogin }) {
     finally { setBusy(false); }
   };
 
+  if (kur && !(kind && !skip)) return <Kurulum custom={!!store.custom} onCancel={() => setKur(false)} />;
   if (kind && !skip) return <Welcome kind={kind} onSkip={() => { try { sessionStorage.setItem(SKIP_KEY, '1'); } catch {} setSkip(true); }} />;
 
   return (
@@ -164,6 +172,9 @@ export function Login({ onLogin }) {
             Öğretmen <code>ogretmen</code> / <code>deneme123</code><br />
             Veli <code>deniz.veli</code> / <code>veli123</code> · Öğrenci <code>deniz</code> / <code>ogrenci123</code>
           </div>
+        )}
+        {store.mode === 'online' && (setup || (store.custom && !viaLink()) || wantsSetup()) && (
+          <button type="button" class="klink" onClick={() => setKur(true)}>{store.custom ? 'Veritabanı bağlantısı' : 'Öğretmen misiniz? Kendi MathX\'inizi kurun'}</button>
         )}
       </div>
     </div>

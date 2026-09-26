@@ -7,11 +7,13 @@ import { fmtTL, parseTL, fmtHours } from '../../core/money.js';
 import { isValidPhone } from '../../core/messages.js';
 import { cleanUsername, checkUsername, generatePasswordPair } from '../../store/common.js';
 import { SITE_URL } from '../../config.js';
+import { withConn } from '../../store/conn.js';
 import { PeriodBody } from '../shared.jsx';
 import { PaymentSheet } from './Money.jsx';
 
 const FEE_LABEL = { weekly: 'Haftalık ücret (TL)', '4weekly': '4 haftalık ücret (TL)', monthly: 'Aylık ücret (TL)', oneoff: 'Paket tutarı (TL)' };
-const siteUrl = () => SITE_URL || (location.protocol.startsWith('http') ? location.origin + location.pathname : '');
+// Kendi veritabanını kullanan öğretmenin linkine bağlantı eklenir: veli/öğrenci o öğretmenin MathX'ine girer
+const siteUrl = () => withConn(SITE_URL || (location.protocol.startsWith('http') ? location.origin + location.pathname : ''));
 
 // Veli ve öğrenci birbirinin şifresini görmesin: her birine yalnızca kendi giriş bilgisi gider.
 export function credentialsMessage(s, pw, who) {

@@ -7,10 +7,30 @@ import { TABLES, ROLE_TABLES } from './common.js';
 export const EMAIL_DOMAIN = 'kullanici.mathx.app';
 const toEmail = (username) => `${username}@${EMAIL_DOMAIN}`;
 
+const CONFIRM_MSG = 'Supabase\'te "Confirm email" (e-posta onayı) açık kalmış. Supabase → Authentication → Sign In / Providers → "Confirm email" kapatıp "Save changes" deyin, sonra tekrar deneyin.';
+
+/** Kurulum ekranı: yapıştırılan bağlantıyı dener. Hata metni fırlatır; başarıda { teacher } döner. */
+export async function probeConn(url, key) {
+  const h = { apikey: key };
+  let r;
+  try { r = await fetch(`${url}/auth/v1/settings`, { headers: h }); }
+  catch { throw new Error('Bu adrese ulaşılamadı. İnternet bağlantınızı ve kopyaladığınız adresi kontrol edin.'); }
+  if (r.status === 401 || r.status === 403) throw new Error('Anahtar kabul edilmedi. Supabase\'teki "Publishable key"i yeniden kopyalayın.');
+  if (!r.ok) throw new Error('Supabase projesi yanıt vermedi. Proje yeni açıldıysa 1-2 dakika bekleyip tekrar deneyin.');
+  const cfg = await r.json().catch(() => ({}));
+  if (cfg.disable_signup) throw new Error('Supabase\'te yeni kullanıcı kaydı kapalı. Authentication → Sign In / Providers → "Allow new users to sign up" açık olmalı.');
+  if (cfg.mailer_autoconfirm === false) throw new Error(CONFIRM_MSG);
+  const t = await fetch(`${url}/rest/v1/rpc/teacher_exists`, { method: 'POST', headers: { ...h, 'Content-Type': 'application/json' }, body: '{}' }).catch(() => null);
+  if (!t) throw new Error('Bu adrese ulaşılamadı. İnternet bağlantınızı kontrol edin.');
+  if (!t.ok) throw new Error('Kurulum kodu çalıştırılmamış görünüyor. 2. adımdaki kodu Supabase → SQL Editor\'e yapıştırıp "Run" deyin.');
+  return { teacher: (await t.json().catch(() => false)) === true };
+}
+
 function fail(error, fallback) {
   if (!error) return;
   const m = error.message || '';
   if (/Invalid login credentials/i.test(m)) throw new Error('Kullanıcı adı ya da şifre hatalı.');
+  if (/Email not confirmed/i.test(m)) throw new Error(CONFIRM_MSG);
   if (/already registered|already been registered/i.test(m)) throw new Error('Bu kullanıcı adı zaten kullanılıyor.');
   if (/student_id.*books|books.*student_id/i.test(m)) throw new Error('Öğrenci kitapları için veritabanı güncellemesi gerekiyor: supabase/guncelleme-2026-09-26d-ogrenci-kitaplari.sql dosyasını Supabase SQL Editor\'de bir kez çalıştırın.');
   if (/Failed to fetch|NetworkError/i.test(m)) throw new Error('İnternet bağlantısı yok. Bağlantıyı kontrol edip tekrar deneyin.');
@@ -41,8 +61,9 @@ export function createSupabaseStore({ url, anonKey }) {
       return !!data;
     },
     async setupTeacher(username, password) {
-      const { error } = await sb.auth.signUp({ email: toEmail(username), password });
+      const { data, error } = await sb.auth.signUp({ email: toEmail(username), password });
       fail(error, 'Öğretmen hesabı açılamadı');
+      if (data?.user && !data.session) throw new Error(CONFIRM_MSG);
       const r = await sb.auth.signInWithPassword({ email: toEmail(username), password });
       fail(r.error);
       const c = await sb.rpc('claim_teacher', { p_username: username });

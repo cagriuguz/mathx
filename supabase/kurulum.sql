@@ -272,3 +272,9 @@ do $$ declare t text; begin
     exception when duplicate_object then null; end;
   end loop;
 end $$;
+
+-- ───────────── Erişim izinleri (yeni açılan Supabase projelerinde de kesin olsun; güvenliği yukarıdaki RLS sağlar)
+grant usage on schema public to anon, authenticated;
+grant select, insert, update, delete on all tables in schema public to authenticated;
+grant execute on all functions in schema public to authenticated;
+grant execute on function public.teacher_exists() to anon;
