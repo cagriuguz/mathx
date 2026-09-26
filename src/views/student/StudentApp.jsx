@@ -8,8 +8,11 @@ export function HomeworkCard({ h, readOnly }) {
   const [run, busy] = useAction();
   const late = !h.done && h.due_date < now.date;
   // Öğrenci yalnız işaretler; otomatik moddaysa öğretmene ve veliye mesajı sunucu gönderir (öğrenci seçenek görmez)
-  const toggle = () => run(async () => { const done = !h.done; await store.setHomeworkDone(h.id, done); await reload(); if (done) store.waSend('done', h.id); },
-    h.done ? 'İşaret kaldırıldı' : 'Harika! Öğretmenine bildirildi.');
+  // Bir kez "yaptım" denince geri alınamaz (veritabanı da izin vermez); yanlışlıkla basmaya karşı önce sorulur
+  const markDone = () => {
+    if (h.done || !confirm('Ödevini gerçekten bitirdin mi?\n\nÖğretmenine ve veline bildirilecek. Bu işaret geri alınamaz.')) return;
+    run(async () => { await store.setHomeworkDone(h.id, true); await reload(); store.waSend('done', h.id); }, 'Harika! Öğretmenine bildirildi.');
+  };
   return (
     <div class={`card card-pad hw${h.done ? ' done' : ''}`}>
       <div class="spread">
@@ -21,8 +24,8 @@ export function HomeworkCard({ h, readOnly }) {
       </div>
       <div class="small" style="margin-bottom:10px">Son bitirme tarihi: <b>{fmtDate(h.due_date)}</b></div>
       {!readOnly && (
-        <button class={`bigcheck${h.done ? ' done' : ''}`} disabled={busy} onClick={toggle} aria-pressed={h.done}>
-          <Icon name={h.done ? 'check' : 'book'} /> {h.done ? 'Yaptım (geri almak için dokun)' : 'Ödevimi yaptım'}
+        <button class={`bigcheck${h.done ? ' done' : ''}`} disabled={busy || h.done} onClick={markDone} aria-pressed={h.done}>
+          <Icon name={h.done ? 'check' : 'book'} /> {h.done ? 'Yaptım, öğretmenime bildirildi' : 'Ödevimi yaptım'}
         </button>
       )}
     </div>

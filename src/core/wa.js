@@ -16,6 +16,8 @@ export function planHomeworkMessage({ kind, profile, homework: h, student: s, se
   if (!profile) return { error: 'Oturum yok', status: 401 };
   if (settings?.wa_mode !== 'auto') return { skip: 'manual' };
   if (!h || !s) return { error: 'Ödev bulunamadı', status: 404 };
+  // Kitap/sayfa satırı yoksa şablon parametresi boş kalır; Meta reddeder, yarım cümle de gitmesin
+  if (!(h.items || []).some((i) => String(i.pages || '').trim())) return { skip: 'no-items' };
   const teacher = profile.role === 'teacher';
   const own = profile.role === 'student' && profile.student_id === h.student_id;
   let plan;

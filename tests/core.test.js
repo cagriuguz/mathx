@@ -246,3 +246,10 @@ test('muhasebe: karşılanamayan gider, ek para ve haftalık döküm', () => {
   assert.ok(mv.advice.some((a) => a.level === 'bad' && a.text.includes('Kira')));
   assert.ok(mv.advice.some((a) => a.text.includes('Gecikmiş alacağınız')));
 });
+
+test('kullanıcı adı: telefon klavyesinin baştaki/sondaki boşluğu nokta olmaz', async () => {
+  const { cleanUsername } = await import('../src/store/common.js');
+  assert.equal(cleanUsername('Ayse.Veli '), 'ayse.veli');
+  assert.equal(cleanUsername('  Ayşe Veli  '), 'ayse.veli');
+  assert.equal(cleanUsername('ÇAĞRI'), 'cagri');
+});

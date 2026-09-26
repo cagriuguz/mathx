@@ -37,6 +37,12 @@ test('elle modunda ya da numarasız durumda gönderim yok', () => {
   assert.equal(one.to.length, 1, 'aynı numaraya iki kez gitmez');
 });
 
+test('kitap/sayfa satırı olmayan ödevde otomatik mesaj yok (boş parametre gitmez)', () => {
+  for (const items of [[], [{ book_name: 'Kitap', pages: '  ' }], undefined]) {
+    assert.equal(planHomeworkMessage({ kind: 'given', profile: teacher, homework: { ...hw, items }, student, settings: auto }).skip, 'no-items');
+  }
+});
+
 test('Meta şablon gövdesi ve Türkçe hata açıklamaları', () => {
   const b = templatePayload('905334445566', WA_TEMPLATES.done, ['Ali', 'Limit (5. sayfa) kitabındaki']);
   assert.equal(b.template.language.code, 'tr');

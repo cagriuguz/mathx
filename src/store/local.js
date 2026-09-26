@@ -123,6 +123,8 @@ export function createLocalStore() {
       const h = db.homework.find((x) => x.id === id);
       if (!h || (s.role !== 'teacher' && h.student_id !== s.student_id)) throw new Error('Bu ödeve erişiminiz yok.');
       if (s.role === 'parent') throw new Error('Ödevi yalnızca öğrenci işaretleyebilir.');
+      if (s.role === 'student' && !done) throw new Error('Yapıldı olarak işaretlenen ödev geri alınamaz.');
+      if (s.role === 'student' && h.done) return h; // ikinci basış tarihi değiştirmez
       Object.assign(h, { done, done_at: done ? new Date().toISOString() : null, seen_done: !done ? true : false, sent_done: false });
       write(db); return h;
     },

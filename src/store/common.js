@@ -13,6 +13,7 @@ const TR = { ç: 'c', ğ: 'g', ı: 'i', ö: 'o', ş: 's', ü: 'u', İ: 'i', Ç: 
 
 export function cleanUsername(text) {
   return String(text || '')
+    .trim() // telefon klavyesi kelimeden sonra kendiliğinden boşluk koyar; sonda nokta olmasın
     .replace(/[çğıöşüİÇĞÖŞÜ]/g, (c) => TR[c])
     .toLowerCase()
     .replace(/\s+/g, '.')

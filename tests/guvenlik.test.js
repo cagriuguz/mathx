@@ -82,6 +82,12 @@ test('güvenlik kuralları (RLS)', async () => {
     for (const t of ['students', 'schedules', 'plans', 'marks', 'payments', 'books', 'expenses', 'settings']) assert.equal(await count(db, t), 0, `öğrenci ${t} görmemeli`);
     await db.query(`select public.set_homework_done('20000000-0000-0000-0000-00000000000a', true)`);
     assert.equal(await rejects(db.query(`select public.set_homework_done('20000000-0000-0000-0000-00000000000b', true)`)), true, 'başka öğrencinin ödevi');
+    // "Yaptım" kilidi: öğrenci geri alamaz, ikinci basış işaret tarihini değiştirmez
+    const t1 = (await db.query(`select done_at from public.homework`)).rows[0].done_at;
+    assert.equal(await rejects(db.query(`select public.set_homework_done('20000000-0000-0000-0000-00000000000a', false)`)), true, 'öğrenci yaptım işaretini geri alamaz');
+    await db.query(`select public.set_homework_done('20000000-0000-0000-0000-00000000000a', true)`);
+    const r = (await db.query(`select done, done_at from public.homework`)).rows[0];
+    assert.equal(r.done, true); assert.equal(String(r.done_at), String(t1), 'ikinci basış tarihi değiştirmez');
     await db.query(`update public.homework set due_date = '2030-01-01'`);
     assert.equal((await db.query('select public.my_student_name() as n')).rows[0].n, 'Ali');
     assert.equal(await rejects(db.query(`select public.set_wa_config('1','2','cal')`)), true, 'öğrenci WhatsApp ayarı yazamaz');

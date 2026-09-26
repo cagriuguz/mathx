@@ -57,13 +57,13 @@ export function WhatsAppSettings() {
       {mode === 'auto' && (showForm ? (
         <div class="stack">
           <Field label="WhatsApp Business numaranız" hint="Mesajların gideceği hat, ör. 0555 123 45 67">
-            <input class="input" type="tel" value={f.business_phone} onInput={(e) => setF({ ...f, business_phone: e.currentTarget.value })} />
+            <input class="input" type="tel" value={f.business_phone} onInput={(e) => { const v = e.currentTarget.value; setF((o) => ({ ...o, business_phone: v })); }} />
           </Field>
           <Field label="Telefon numarası kimliği (Phone number ID)" hint="Meta'da WhatsApp → API Kurulumu sayfasında yazan uzun sayı">
-            <input class="input" inputMode="numeric" value={f.phone_number_id} onInput={(e) => setF({ ...f, phone_number_id: e.currentTarget.value.replace(/\s/g, '') })} />
+            <input class="input" inputMode="numeric" value={f.phone_number_id} onInput={(e) => { const v = e.currentTarget.value.replace(/\s/g, ''); setF((o) => ({ ...o, phone_number_id: v })); }} />
           </Field>
           <Field label="Erişim anahtarı (kalıcı)" hint={st.has_token ? 'Kayıtlı ✓ Değiştirmek istemiyorsanız boş bırakın.' : 'Meta\'da sistem kullanıcısı için oluşturduğunuz anahtar. Kaydedince bir daha gösterilmez.'}>
-            <input class="input" type="password" autocomplete="off" value={f.token} onInput={(e) => setF({ ...f, token: e.currentTarget.value.trim() })} />
+            <input class="input" type="password" autocomplete="off" value={f.token} onInput={(e) => { const v = e.currentTarget.value.trim(); setF((o) => ({ ...o, token: v })); }} />
           </Field>
           <div class="row wrap">
             <button class="btn primary" disabled={busy} onClick={save}>Kaydet</button>
