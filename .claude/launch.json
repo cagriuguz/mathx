@@ -1,6 +1,6 @@
 {
   "version": "0.0.1",
   "configurations": [
-    { "name": "mathx", "runtimeExecutable": "npx", "runtimeArgs": ["vite", "--port", "5180", "--strictPort"], "port": 5180 }
+    { "name": "mathx", "runtimeExecutable": "sh", "runtimeArgs": ["-c", "npx vite --port ${PORT:-5180} --strictPort"], "port": 5180, "autoPort": true }
   ]
 }

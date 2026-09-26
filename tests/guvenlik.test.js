@@ -71,6 +71,9 @@ test('güvenlik kuralları (RLS)', async () => {
     assert.equal(await rejects(db.query(`insert into public.profiles(user_id,username,role) values ('${U.pA}','x','teacher')`)), true, 'veli kendini öğretmen yapamamalı');
     assert.equal(await rejects(db.query(`select public.set_homework_done('20000000-0000-0000-0000-00000000000a', true)`)), true, 'veli ödevi işaretleyememeli');
     assert.equal(await rejects(db.query(`select public.admin_set_password('ali', 'x12345678')`)), true, 'veli şifre değiştirememeli');
+    assert.equal(await rejects(db.query(`select public.set_wa_config('1','2','cal')`)), true, 'veli WhatsApp ayarı yazamaz');
+    assert.equal(await rejects(db.query(`select public.wa_config_status()`)), true, 'veli WhatsApp durumunu göremez');
+    assert.equal(await count(db, 'wa_config'), 0, 'veli anahtar tablosunu göremez');
   });
 
   // ÖĞRENCİ A: yalnızca kendi ödevi; ödeme/ders/öğrenci tablosu yok
@@ -81,6 +84,8 @@ test('güvenlik kuralları (RLS)', async () => {
     assert.equal(await rejects(db.query(`select public.set_homework_done('20000000-0000-0000-0000-00000000000b', true)`)), true, 'başka öğrencinin ödevi');
     await db.query(`update public.homework set due_date = '2030-01-01'`);
     assert.equal((await db.query('select public.my_student_name() as n')).rows[0].n, 'Ali');
+    assert.equal(await rejects(db.query(`select public.set_wa_config('1','2','cal')`)), true, 'öğrenci WhatsApp ayarı yazamaz');
+    await db.query(`update public.homework set wa_done_at = now()`);
   });
 
   // Oturumsuz (anon) hiçbir şey göremez
@@ -96,9 +101,17 @@ test('güvenlik kuralları (RLS)', async () => {
   assert.equal(hw[0].done, true);
   assert.equal(hw[0].due_date, '2026-09-09', 'öğrenci son tarihi değiştirememeli');
   assert.equal(hw[1].done, false);
+  assert.equal((await db.query(`select count(*)::int as n from public.homework where wa_done_at is not null`)).rows[0].n, 0, 'öğrenci otomatik gönderim işaretini değiştiremez');
 
   // ÖĞRETMEN: her şey
   await as(db, U.teacher, async () => {
+    // WhatsApp anahtarı: yazılır, durum görülür, anahtarın KENDİSİ hiçbir yoldan okunamaz
+    await db.query(`select public.set_wa_config('0555 111 22 33', '123456', 'GIZLI-ANAHTAR')`);
+    await db.query(`select public.set_wa_config('0555 111 22 33', '123456', '')`); // boş = eskisini koru
+    const st = (await db.query('select public.wa_config_status() as s')).rows[0].s;
+    assert.deepEqual([st.phone_number_id, st.has_token], ['123456', true]);
+    assert.ok(!JSON.stringify(st).includes('GIZLI'), 'durum anahtarı sızdırmamalı');
+    assert.equal(await count(db, 'wa_config'), 0, 'öğretmen bile anahtar tablosunu doğrudan okuyamaz');
     assert.equal(await count(db, 'students'), 2);
     assert.equal(await count(db, 'payments'), 2);
     await db.query(`select public.admin_set_password('ali', 'Yeni-1234')`);
@@ -109,4 +122,5 @@ test('güvenlik kuralları (RLS)', async () => {
   const pw = (await db.query(`select encrypted_password from auth.users where id = '${U.sA}'`)).rows[0].encrypted_password;
   assert.ok(pw && pw.startsWith('$2'), 'şifre bcrypt ile saklanmalı');
   assert.equal((await db.query(`select count(*)::int as n from auth.users where id = '${U.pB}'`)).rows[0].n, 0, 'B velisinin hesabı silinmeli');
+  assert.equal((await db.query(`select token from public.wa_config`)).rows[0].token, 'GIZLI-ANAHTAR', 'boş anahtar eskisini silmemeli');
 });

@@ -7,8 +7,9 @@ export function HomeworkCard({ h, readOnly }) {
   const { store, reload, now } = useApp();
   const [run, busy] = useAction();
   const late = !h.done && h.due_date < now.date;
-  const toggle = () => run(async () => { await store.setHomeworkDone(h.id, !h.done); await reload(); },
-    h.done ? 'İşaret kaldırıldı' : 'Harika! Öğretmenine ve velinize bildirildi.');
+  // Öğrenci yalnız işaretler; otomatik moddaysa öğretmene ve veliye mesajı sunucu gönderir (öğrenci seçenek görmez)
+  const toggle = () => run(async () => { const done = !h.done; await store.setHomeworkDone(h.id, done); await reload(); if (done) store.waSend('done', h.id); },
+    h.done ? 'İşaret kaldırıldı' : 'Harika! Öğretmenine bildirildi.');
   return (
     <div class={`card card-pad hw${h.done ? ' done' : ''}`}>
       <div class="spread">

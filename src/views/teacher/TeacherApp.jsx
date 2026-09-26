@@ -5,7 +5,8 @@ import { generateLessons, decorateLessons } from '../../core/lessons.js';
 import { isOpen } from '../../core/billing.js';
 import { msgHomeworkDone, msgPaymentLate, msgPackageFull } from '../../core/messages.js';
 import { fmtTL } from '../../core/money.js';
-import { monthKey } from '../../core/dates.js';
+import { monthKey, fmtDate } from '../../core/dates.js';
+import { buildNotifications } from '../../core/notify.js';
 import { LessonRow, PeriodBody } from '../shared.jsx';
 import { Lessons } from './Lessons.jsx';
 import { Students } from './Students.jsx';
@@ -48,7 +49,8 @@ export function TeacherApp() {
   }, [doneIds.join()]);
 
   const lateCount = periods.filter((p) => isOpen(p) && p.status === 'late').length;
-  const nav = NAV.map((n) => ({ ...n, dot: (n.key === 'homework' && doneIds.length > 0) || (n.key === 'money' && lateCount > 0) }));
+  const notifCount = buildNotifications(data, periods, now.date).count;
+  const nav = NAV.map((n) => ({ ...n, dot: (n.key === 'panel' && notifCount > 0) || (n.key === 'homework' && doneIds.length > 0) || (n.key === 'money' && lateCount > 0) }));
   const cur = NAV.find((n) => n.key === tab) || NAV[0];
 
   return (
@@ -81,9 +83,10 @@ function Panel({ go }) {
 
   const open = periods.filter(isOpen).sort((a, b) => (a.status === b.status ? a.due.localeCompare(b.due) : a.status === 'late' ? -1 : 1));
   const openTotal = open.reduce((a, p) => a + p.remaining, 0);
+  const notif = buildNotifications(data, periods, now.date);
+  const upcomingPay = open.filter((p) => p.status !== 'late');
   const month = monthKey(now.date);
   const monthIncome = data.payments.filter((p) => !p.deleted_at && p.method !== 'indirim' && p.paid_date.startsWith(month)).reduce((a, p) => a + p.amount, 0);
-  const doneHw = data.homework.filter((h) => h.done && !h.seen_done);
   const activeCount = data.students.filter((s) => s.active !== false).length;
 
   const markSeen = (h, sent) => run(async () => { await store.update('homework', h.id, sent ? { seen_done: true, sent_done: true } : { seen_done: true }); await reload(); });
@@ -107,27 +110,51 @@ function Panel({ go }) {
         <div class="figure"><div class="v">{activeCount}</div><div class="l">Aktif öğrenci</div></div>
       </div>
 
-      {doneHw.length > 0 && (
-        <section>
-          <div class="section-head"><h2 class="section-title">Yapılan ödevler</h2><span class="chip ok">{doneHw.length} yeni</span></div>
-          <div class="card"><ul class="list">
-            {doneHw.map((h) => {
-              const s = byId.get(h.student_id);
-              if (!s) return null;
-              const text = msgHomeworkDone(s.name, h.items);
-              return (
-                <li key={h.id} class="stack">
-                  <div class="msg">{text}</div>
-                  <div class="row wrap">
-                    <WaButton small phone={s.parent_phone} text={text} label="Veliye gönder" onSent={() => markSeen(h, true)} />
-                    <button class="btn small" onClick={() => markSeen(h, false)}>Gördüm</button>
-                  </div>
+      <section>
+        <div class="section-head"><h2 class="section-title">Bildirimler</h2>{notif.count > 0 && <span class="chip bad">{notif.count}</span>}</div>
+        <div class="card">
+          {notif.count === 0 ? <Empty title="Yeni bildirim yok ✓">Öğrenci ödevini işaretleyince, ödev ya da ödeme gecikince burada görünür.</Empty> : (
+            <ul class="list">
+              {notif.doneHw.map((h) => {
+                const s = byId.get(h.student_id);
+                const text = msgHomeworkDone(s.name, h.items);
+                return (
+                  <li key={'d' + h.id} class="stack">
+                    <div class="spread"><span class="item-title">{s.name}</span><span class="chip ok">Ödevini yaptı</span></div>
+                    <div class="msg">{text}</div>
+                    <div class="row wrap">
+                      {h.wa_done_at
+                        ? <span class="chip ok">Size ve veliye otomatik gönderildi ✓</span>
+                        : <WaButton small phone={s.parent_phone} text={text} label="Veliye gönder" onSent={() => markSeen(h, true)} />}
+                      <button class="btn small" onClick={() => markSeen(h, false)}>Gördüm</button>
+                    </div>
+                  </li>
+                );
+              })}
+              {notif.lateHw.map((h) => (
+                <li key={'l' + h.id} class="stack">
+                  <div class="spread"><span class="item-title">{byId.get(h.student_id).name}</span><span class="chip bad">Ödevi gecikti</span></div>
+                  <div class="small">{h.items.map((i) => `${i.book_name} (${i.pages})`).join(', ')}</div>
+                  <div class="spread small muted"><span>Son gün {fmtDate(h.due_date)} · {h.days_late} gün geçti</span>
+                    <button class="btn small ghost" onClick={() => go('homework')}>Ödevlere git</button></div>
                 </li>
-              );
-            })}
-          </ul></div>
-        </section>
-      )}
+              ))}
+              {notif.latePay.map((p) => {
+                const s = byId.get(p.student_id);
+                return (
+                  <li key={'p' + p.key} class="stack">
+                    <PeriodBody p={p} />
+                    <div class="row wrap">
+                      <button class="btn small primary" onClick={() => setPaying(p)}>Ödeme al</button>
+                      <WaButton small phone={s.parent_phone} text={msgPaymentLate(p)} label="Hatırlat" />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </section>
 
       <section>
         <div class="section-head"><h2 class="section-title">Bugünün dersleri</h2><button class="btn small ghost" onClick={() => go('lessons')}>Takvim</button></div>
@@ -139,11 +166,11 @@ function Panel({ go }) {
       </section>
 
       <section>
-        <div class="section-head"><h2 class="section-title">Ödeme hatırlatmaları</h2>{open.length > 0 && <span class="num muted">{fmtTL(openTotal)}</span>}</div>
+        <div class="section-head"><h2 class="section-title">Vadesi gelen ödemeler</h2>{upcomingPay.length > 0 && <span class="num muted">{fmtTL(upcomingPay.reduce((a, p) => a + p.remaining, 0))}</span>}</div>
         <div class="card">
-          {open.length ? (
+          {upcomingPay.length ? (
             <ul class="list">
-              {open.map((p) => {
+              {upcomingPay.map((p) => {
                 const s = byId.get(p.student_id);
                 return (
                   <li key={p.key} class="stack">
@@ -158,7 +185,7 @@ function Panel({ go }) {
                 );
               })}
             </ul>
-          ) : <Empty title="Bekleyen ödeme yok">Vadesi gelen dönemler burada görünür; gecikme uyarısı vadeden sonra gelir.</Empty>}
+          ) : <Empty title="Vadesi gelen ödeme yok">Geciken ödemeler yukarıda, Bildirimler'de görünür.</Empty>}
         </div>
       </section>
       {paying && <PaymentSheet period={paying} onClose={() => setPaying(null)} />}

@@ -79,3 +79,15 @@ export function notHeldReport(students, marks, from, to) {
 }
 
 export const weekDays = (mondayIso) => Array.from({ length: 7 }, (_, i) => addDays(mondayIso, i));
+
+/** Ders raporu özeti: tarih aralığında öğrenci başına yapılan / yapılmayan / henüz gelmeyen ders sayısı */
+export function lessonSummary(students, schedules, marks, from, to, now) {
+  const rows = students.map((s) => {
+    const ls = decorateLessons(generateLessons(s, schedules, from, to), marks, now);
+    const c = { done: 0, not_held: 0, upcoming: 0 };
+    for (const l of ls) c[l.status === 'not_held' ? 'not_held' : l.status === 'done' ? 'done' : 'upcoming']++;
+    return { id: s.id, name: s.name, ...c, total: ls.length };
+  }).filter((r) => r.total > 0).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+  const sum = (k) => rows.reduce((a, r) => a + r[k], 0);
+  return { rows, done: sum('done'), not_held: sum('not_held'), upcoming: sum('upcoming') };
+}

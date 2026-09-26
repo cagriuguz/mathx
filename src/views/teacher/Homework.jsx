@@ -16,7 +16,7 @@ export function Homework() {
 }
 
 function Give({ goBooks }) {
-  const { data, store, reload, now } = useApp();
+  const { data, store, reload, now, settings } = useApp();
   const [run, busy] = useAction();
   const students = data.students.filter((s) => s.active !== false).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
   const books = data.books.filter((b) => b.active !== false).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
@@ -38,8 +38,15 @@ function Give({ goBooks }) {
     await run(async () => {
       const h = await store.insert('homework', { student_id: sid, given_date: now.date, due_date: due, items, note: '', done: false, done_at: null, sent_given: false, sent_done: false, seen_done: true });
       await reload();
-      setSaved({ h, text, student });
-    }, 'Ödev kaydedildi');
+      // Otomatik modda veliye ve öğrenciye kendiliğinden gider; olmazsa elle gönderme düğmeleri çıkar
+      const auto = settings.wa_mode === 'auto';
+      setSaved({ h, text, student, auto: auto ? 'sending' : null });
+      if (auto) {
+        const r = await store.waSend('given', h.id);
+        setSaved((o) => o && { ...o, auto: r.ok ? 'sent' : 'failed', error: r.error });
+        if (r.ok) reload();
+      }
+    }, settings.wa_mode === 'auto' ? null : 'Ödev kaydedildi');
   };
   const markSent = () => saved && store.update('homework', saved.h.id, { sent_given: true }).then(reload).catch(() => {});
 
@@ -51,11 +58,18 @@ function Give({ goBooks }) {
       <div class="card card-pad stack">
         <h2 class="section-title">Ödev kaydedildi</h2>
         <div class="msg">{saved.text}</div>
-        <div class="row wrap">
-          <WaButton phone={saved.student.parent_phone} text={saved.text} label="Veliye gönder" onSent={markSent} />
-          <WaButton phone={saved.student.phone} text={saved.text} label="Öğrenciye gönder" />
-        </div>
-        <div class="hint">WhatsApp hazır mesajla açılır; göndermek için WhatsApp'ta Gönder'e basın.</div>
+        {saved.auto === 'sending' && <div class="hint">Veliye ve öğrenciye otomatik gönderiliyor…</div>}
+        {saved.auto === 'sent' && <div class="chip ok" style="align-self:flex-start">Veliye ve öğrenciye otomatik gönderildi ✓</div>}
+        {saved.auto === 'failed' && <div class="warn">Otomatik gönderilemedi: {(saved.error || 'bilinmeyen hata').replace(/\.$/, '')}. Aşağıdan elle gönderin.</div>}
+        {(!saved.auto || saved.auto === 'failed') && (
+          <>
+            <div class="row wrap">
+              <WaButton phone={saved.student.parent_phone} text={saved.text} label="Veliye gönder" onSent={markSent} />
+              <WaButton phone={saved.student.phone} text={saved.text} label="Öğrenciye gönder" />
+            </div>
+            <div class="hint">WhatsApp hazır mesajla açılır; göndermek için WhatsApp'ta Gönder'e basın.</div>
+          </>
+        )}
         <button class="btn" onClick={() => { setSaved(null); setPages({}); setSid(''); }}>Yeni ödev ver</button>
       </div>
     );

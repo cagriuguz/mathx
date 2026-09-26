@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateLessons, decorateLessons, cleanReason, notHeldReport } from '../src/core/lessons.js';
+import { generateLessons, decorateLessons, cleanReason, notHeldReport, lessonSummary } from '../src/core/lessons.js';
 import { studentPeriods, packageFull } from '../src/core/billing.js';
-import { ablative, locative, msgHomeworkGiven, msgHomeworkDone, msgPaymentLate, msgPackageFull, msgPaymentReceived, normalizePhone, waLink } from '../src/core/messages.js';
+import { ablative, locative, msgHomeworkGiven, isIOS, waHref, msgHomeworkDone, msgPaymentLate, msgPackageFull, msgPaymentReceived, normalizePhone, waLink } from '../src/core/messages.js';
 import { parseTL, fmtTL } from '../src/core/money.js';
 import { dow, addMonths } from '../src/core/dates.js';
 import { incomeWeeks, monthView } from '../src/core/finance.js';
@@ -137,6 +137,12 @@ test('telefon ve wa.me', () => {
   assert.equal(normalizePhone('+90 (532) 123-4567'), '905321234567');
   assert.equal(normalizePhone('5321234567'), '905321234567');
   assert.ok(waLink('05321234567', 'Ödev ş').startsWith('https://wa.me/905321234567?text=%C3%96dev'));
+  assert.equal(waHref('05321234567', 'a b', true), 'whatsapp://send?phone=905321234567&text=a%20b');
+  assert.equal(waHref('05321234567', 'a b', false), 'https://wa.me/905321234567?text=a%20b');
+  assert.equal(isIOS('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)', 5), true);
+  assert.equal(isIOS('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 5), true, 'iPad');
+  assert.equal(isIOS('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 0), false, 'Mac');
+  assert.equal(isIOS('Mozilla/5.0 (Linux; Android 14)', 5), false);
 });
 
 test('para', () => {
@@ -152,6 +158,9 @@ test('ders raporu', () => {
   const r = notHeldReport([ali], marks, '2026-09-01', '2026-09-30');
   assert.equal(r.length, 1);
   assert.equal(r[0].student_name, 'Ali Yılmaz');
+  // Eylül 2026: 5 Salı + 4 Cuma = 9 ders; 15'i yapılmadı, 29'u henüz gelmedi (bugün 26 Eylül)
+  const sum = lessonSummary([ali], sched, marks, '2026-09-01', '2026-09-30', { date: '2026-09-26', time: '12:00' });
+  assert.deepEqual([sum.done, sum.not_held, sum.upcoming, sum.rows[0].total], [7, 1, 1, 9]);
 });
 
 test('gelir takvimi ve muhasebe', () => {

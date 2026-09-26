@@ -187,7 +187,7 @@ a { color: inherit; }
 .btn.ghost { border-color: transparent; background: none; }
 .btn.small { padding: 6px 11px; min-height: 34px; font-size: 13.5px; border-radius: 10px; }
 .btn.block { width: 100%; }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn:disabled, .btn[aria-disabled="true"] { opacity: 0.5; cursor: not-allowed; }
 .btn svg { width: 18px; height: 18px; }
 
 /* Durum rozetleri */
@@ -313,3 +313,8 @@ table.t tr.current td { background: var(--brass-soft); }
 .login form { background: var(--surface); color: var(--text); border-radius: 22px; padding: 22px; display: grid; gap: 14px; box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.6); }
 .login .demo { margin-top: 16px; font-size: 13px; color: rgba(245, 246, 248, 0.75); text-align: center; line-height: 1.7; }
 .login .demo code { color: #e6cf9f; }
+.warn { background: var(--amber-soft); border: 1px solid var(--amber); color: var(--text); border-radius: var(--r-md); padding: 10px 12px; font-size: 14px; line-height: 1.5; }
+.guide p, .guide li { font-size: 14.5px; line-height: 1.55; }
+.guide h3 { font-family: var(--serif); font-size: 17px; margin: 10px 0 0; }
+.guide ol, .guide ul { padding-left: 20px; margin: 0; display: grid; gap: 10px; }
+.guide a { color: var(--brass); }

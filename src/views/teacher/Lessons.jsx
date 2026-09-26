@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'preact/hooks';
 import { useApp, Tabs, Icon, Empty, Field } from '../../ui.jsx';
-import { generateLessons, decorateLessons, notHeldReport } from '../../core/lessons.js';
+import { generateLessons, decorateLessons, notHeldReport, lessonSummary } from '../../core/lessons.js';
 import { addDays, weekStart, fmtShort, fmtDate, TR_DAYS, monthKey, monthFirst, monthLast, dow } from '../../core/dates.js';
 import { LessonRow } from '../shared.jsx';
 
@@ -69,6 +69,7 @@ function Report() {
   const [to, setTo] = useState(monthLast(m));
   const [who, setWho] = useState('');
   const [rows, setRows] = useState(null);
+  const [sum, setSum] = useState(null);
   const [err, setErr] = useState('');
 
   const make = () => {
@@ -77,6 +78,7 @@ function Report() {
     setErr('');
     const ss = data.students.filter((s) => !who || s.id === who);
     setRows(notHeldReport(ss, data.marks, from, to));
+    setSum(lessonSummary(ss, data.schedules, data.marks, from, to, now));
   };
 
   return (
@@ -95,6 +97,27 @@ function Report() {
         {err && <div class="error">{err}</div>}
         <button class="btn primary" onClick={make}><Icon name="report" /> Raporla</button>
       </div>
+      {sum && (
+        <div class="card">
+          <div class="card-pad" style="padding-bottom:6px">
+            <h2 class="section-title">Özet</h2>
+            <div class="muted small">{fmtDate(from)} – {fmtDate(to)}</div>
+          </div>
+          <div class="figures" style="box-shadow:none">
+            <div class="figure"><div class="v">{sum.done}</div><div class="l">Yapıldı</div></div>
+            <div class="figure"><div class="v">{sum.not_held}</div><div class="l">Yapılmadı</div></div>
+            <div class="figure"><div class="v">{sum.upcoming}</div><div class="l">Henüz gelmedi</div></div>
+          </div>
+          {sum.rows.length > 1 && (
+            <ul class="list">
+              {sum.rows.map((r) => (
+                <li key={r.id} class="spread"><span>{r.name}</span>
+                  <span class="small"><b>{r.done}</b> yapıldı · <b>{r.not_held}</b> yapılmadı{r.upcoming ? ` · ${r.upcoming} gelecek` : ''}</span></li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {rows && (
         <div class="card">
           <div class="card-pad" style="padding-bottom:6px">

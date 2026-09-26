@@ -116,6 +116,26 @@ export function createSupabaseStore({ url, anonKey }) {
       const { error } = await sb.rpc('set_homework_done', { p_id: id, p_done: done });
       fail(error, 'Ödev güncellenemedi');
     },
+    // ── Otomatik WhatsApp (WhatsApp Business). Hata fırlatmaz: sonuç döner, program elle yönteme düşer.
+    async waSend(kind, homework_id) {
+      try {
+        const { data, error } = await sb.functions.invoke('wa-send', { body: { kind, homework_id } });
+        if (error) {
+          const body = await error.context?.json?.().catch(() => null);
+          return { ok: false, error: body?.error || 'Otomatik gönderim sunucusuna ulaşılamadı.' };
+        }
+        return data || { ok: false };
+      } catch (e) { return { ok: false, error: e.message || 'Otomatik gönderim başarısız.' }; }
+    },
+    async waStatus() {
+      const { data, error } = await sb.rpc('wa_config_status');
+      if (error) return { business_phone: '', phone_number_id: '', has_token: false, missingSetup: true };
+      return data;
+    },
+    async setWaConfig({ business_phone, phone_number_id, token }) {
+      const { error } = await sb.rpc('set_wa_config', { p_business_phone: business_phone, p_phone_number_id: phone_number_id, p_token: token || '' });
+      fail(error, 'WhatsApp bilgileri kaydedilemedi');
+    },
     subscribe(fn) {
       let t = null;
       const ch = sb.channel('mathx-all');

@@ -24,7 +24,7 @@ async function seed() {
   const today = localNow().date;
   const start = addDays(today, -40);
   const db = Object.fromEntries(TABLES.map((t) => [t, []]));
-  db.settings = [{ ...DEFAULT_SETTINGS, teacher_name: 'Çağrı Uğuz', teacher_phone: '' }];
+  db.settings = [{ ...DEFAULT_SETTINGS, teacher_name: 'Çağrı Uğuz', teacher_phone: '0532 000 00 00' }];
   db.accounts = [{ id: 'u-teacher', username: 'ogretmen', pw: await hash('deneme123'), role: 'teacher', student_id: null }];
   const kids = [
     { name: 'Deniz Aksoy', parent: 'Selin Aksoy', type: '4weekly', fee: 480000, slots: [[2, '17:00', 1], [5, '18:00', 1]] },
@@ -125,6 +125,12 @@ export function createLocalStore() {
       if (s.role === 'parent') throw new Error('Ödevi yalnızca öğrenci işaretleyebilir.');
       Object.assign(h, { done, done_at: done ? new Date().toISOString() : null, seen_done: !done ? true : false, sent_done: false });
       write(db); return h;
+    },
+    // Deneme modunda gerçek mesaj gitmez; bilgiler yalnız bu cihazda (anahtar saklanmaz)
+    async waSend() { return { ok: false, error: 'Deneme modunda otomatik mesaj gönderilmez.' }; },
+    async waStatus() { const c = db.wa_demo || {}; return { business_phone: c.business_phone || '', phone_number_id: c.phone_number_id || '', has_token: !!c.has_token }; },
+    async setWaConfig({ business_phone, phone_number_id, token }) {
+      db.wa_demo = { business_phone, phone_number_id, has_token: !!token || !!db.wa_demo?.has_token }; write(db);
     },
     subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     async resetDemo() { localStorage.removeItem(KEY); db = await seed(); },

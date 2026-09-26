@@ -56,4 +56,5 @@ export const DEFAULT_SETTINGS = {
   teacher_phone: '',
   remind_days: { weekly: 3, '4weekly': 5, monthly: 3, oneoff: 3 },
   cash_on_hand: 0,
+  wa_mode: 'manual',
 };

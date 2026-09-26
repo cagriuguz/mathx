@@ -1,6 +1,6 @@
 import { createContext } from 'preact';
 import { useContext, useEffect, useState } from 'preact/hooks';
-import { waLink } from './core/messages.js';
+import { waLink, waHref, isIOS, isValidPhone } from './core/messages.js';
 
 export const AppCtx = createContext(null);
 export const useApp = () => useContext(AppCtx);
@@ -44,12 +44,21 @@ export function WaIcon() {
   );
 }
 
-/** WhatsApp'ı hazır mesajla açar (siz Gönder'e basarsınız) */
+/** WhatsApp'ı hazır mesajla açar (siz Gönder'e basarsınız). iPhone'da uygulama doğrudan açılır;
+ *  WhatsApp yüklü değilse (sayfa hâlâ önündeyse) wa.me sayfasına geçilir. */
 export function WaButton({ phone, text, label = "WhatsApp'a gönder", onSent, small, disabled }) {
+  const noPhone = !isValidPhone(phone);
+  const off = disabled || noPhone;
+  const ios = isIOS();
+  const click = () => {
+    if (off) return;
+    if (ios) setTimeout(() => { if (document.visibilityState === 'visible') window.location.href = waLink(phone, text); }, 1800);
+    if (onSent) setTimeout(onSent, 400);
+  };
   return (
-    <a class={`btn wa${small ? ' small' : ''}`} href={disabled ? undefined : waLink(phone, text)} target="_blank" rel="noopener"
-      aria-disabled={disabled} onClick={() => !disabled && onSent && setTimeout(onSent, 400)}>
-      <WaIcon /> {label}
+    <a class={`btn wa${small ? ' small' : ''}`} href={off ? undefined : waHref(phone, text, ios)} target={ios ? undefined : '_blank'} rel="noopener"
+      aria-disabled={off} title={noPhone ? 'Telefon numarası eksik ya da hatalı' : undefined} onClick={click}>
+      <WaIcon /> {label}{noPhone && !disabled ? ' (numara yok)' : ''}
     </a>
   );
 }

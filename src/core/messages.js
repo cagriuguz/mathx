@@ -56,18 +56,30 @@ export function pagesText(pages) {
   return /[-–,\s]/.test(p) ? `${p}. sayfalar` : `${p}. sayfa`;
 }
 
-/** 1) Ödev verildi (öğrenci adı yazılmaz) */
-export function msgHomeworkGiven(items, dueDate) {
+// Otomatik gönderim (WhatsApp Business) Meta'da onaylı ŞABLON ister: metin sabit, yalnız {{1}}, {{2}} değişir.
+// Elle gönderilen mesaj da AYNI şablondan üretilir; böylece iki yol birebir aynı metni yollar.
+export const WA_TEMPLATES = {
+  given: { name: 'mathx_odev_verildi', body: 'Sayın veli, öğrencinizin {{1}} ödevi verilmiştir. Son bitirme tarihi: {{2}}.' },
+  done: { name: 'mathx_odev_yapildi', body: 'Sayın veli, {{1}} isimli öğrenciniz {{2}} ödevini yapmıştır.' },
+};
+export const fillTemplate = (body, params) => body.replace(/\{\{(\d+)\}\}/g, (_, i) => params[i - 1]);
+
+export function homeworkGivenParams(items, dueDate) {
   const parts = items.filter((i) => String(i.pages || '').trim()).map((i) => `${ablative(i.book_name)} ${pagesText(i.pages)}`);
-  return `Sayın veli, öğrencinizin ${parts.join(', ')} ödevi verilmiştir. Son bitirme tarihi: ${fmtDate(dueDate)}.`;
+  return [parts.join(', '), fmtDate(dueDate)];
 }
 
-/** 5) Ödev yapıldı (madde 8) — veliye ve öğretmene */
-export function msgHomeworkDone(studentName, items) {
+export function homeworkDoneParams(studentName, items) {
   const parts = items.filter((i) => String(i.pages || '').trim()).map((i) => `${i.book_name} (${pagesText(i.pages)})`);
   const word = parts.length > 1 ? 'kitaplarındaki' : 'kitabındaki';
-  return `Sayın veli, ${studentName} isimli öğrenciniz ${parts.join(', ')} ${word} ödevini yapmıştır.`;
+  return [studentName, `${parts.join(', ')} ${word}`];
 }
+
+/** 1) Ödev verildi (öğrenci adı yazılmaz) */
+export const msgHomeworkGiven = (items, dueDate) => fillTemplate(WA_TEMPLATES.given.body, homeworkGivenParams(items, dueDate));
+
+/** 5) Ödev yapıldı (madde 8) — veliye ve öğretmene */
+export const msgHomeworkDone = (studentName, items) => fillTemplate(WA_TEMPLATES.done.body, homeworkDoneParams(studentName, items));
 
 const PACKAGE_WORD = { weekly: 'haftalık', '4weekly': '4 haftalık', monthly: 'aylık', oneoff: 'ders' };
 
@@ -93,3 +105,12 @@ export function normalizePhone(phone) {
 export const isValidPhone = (phone) => /^905\d{9}$/.test(normalizePhone(phone));
 
 export const waLink = (phone, text) => `https://wa.me/${normalizePhone(phone)}?text=${encodeURIComponent(text)}`;
+
+/** iPhone/iPad mi? (iPadOS kendini Mac gibi tanıtır; dokunmatik Mac yoktur) */
+export const isIOS = (ua = globalThis.navigator?.userAgent || '', touch = globalThis.navigator?.maxTouchPoints || 0) =>
+  /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && touch > 1);
+
+/** iPhone'da wa.me önce bir web sayfası açar (ana ekran uygulamasında ikinci dokunuş gerekir);
+ *  whatsapp:// şeması uygulamayı doğrudan açar. Android ve bilgisayar wa.me ile sorunsuz. */
+export const waHref = (phone, text, ios = isIOS()) =>
+  ios ? `whatsapp://send?phone=${normalizePhone(phone)}&text=${encodeURIComponent(text)}` : waLink(phone, text);

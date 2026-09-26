@@ -2,6 +2,7 @@ import { useState } from 'preact/hooks';
 import { useApp, useAction, Sheet, Field, Seg, Icon } from '../../ui.jsx';
 import { PLAN_TYPES } from '../../core/billing.js';
 import { localNow } from '../../core/dates.js';
+import { WhatsAppSettings } from './WhatsAppSettings.jsx';
 
 export function Settings({ onClose }) {
   const { store, settings, reload, logout, data } = useApp();
@@ -42,7 +43,7 @@ export function Settings({ onClose }) {
       <div class="stack-lg">
         <div class="stack">
           <Field label="Adınız"><input class="input" value={name} onInput={(e) => setName(e.currentTarget.value)} /></Field>
-          <Field label="Telefonunuz" hint="İsteğe bağlı"><input class="input" type="tel" value={phone} onInput={(e) => setPhone(e.currentTarget.value)} /></Field>
+          <Field label="Telefonunuz" hint={'Otomatik WhatsApp\'ta "ödev yapıldı" mesajı bu numaraya gelir'}><input class="input" type="tel" value={phone} onInput={(e) => setPhone(e.currentTarget.value)} /></Field>
         </div>
         <div class="stack">
           <div class="section-title" style="font-size:18px">Gecikme uyarısı</div>
@@ -56,6 +57,7 @@ export function Settings({ onClose }) {
           </div>
         </div>
         <button class="btn primary block" disabled={busy} onClick={save}>Kaydet</button>
+        <WhatsAppSettings />
         <div class="stack">
           <div class="section-title" style="font-size:18px">Görünüm</div>
           <Seg options={[['auto', 'Otomatik'], ['light', 'Açık'], ['dark', 'Koyu']]} value={theme} onChange={applyTheme} />
