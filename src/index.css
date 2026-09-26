@@ -318,3 +318,4 @@ table.t tr.current td { background: var(--brass-soft); }
 .guide h3 { font-family: var(--serif); font-size: 17px; margin: 10px 0 0; }
 .guide ol, .guide ul { padding-left: 20px; margin: 0; display: grid; gap: 10px; }
 .guide a { color: var(--brass); }
+.qmark { width: 32px; height: 32px; border-radius: 50%; border: 1.5px solid var(--brass); background: var(--brass-soft); color: var(--brass); font-weight: 700; font-size: 17px; cursor: pointer; flex: none; }

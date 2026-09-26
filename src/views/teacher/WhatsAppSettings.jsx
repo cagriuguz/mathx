@@ -39,7 +39,10 @@ export function WhatsAppSettings() {
   const showForm = edit || !(st.phone_number_id && st.has_token);
   return (
     <div class="stack">
-      <div class="section-title" style="font-size:18px">WhatsApp mesajları</div>
+      <div class="spread">
+        <div class="section-title" style="font-size:18px">WhatsApp mesajları</div>
+        <button class="qmark" onClick={() => setGuide(true)} aria-label="Nasıl yapılır?" title="Nasıl yapılır?">?</button>
+      </div>
       <Seg options={[['manual', 'Elle'], ['auto', 'Otomatik (WhatsApp Business)']]} value={mode} onChange={(m) => m !== mode && setMode(m)} />
       {mode === 'manual' ? (
         <div class="hint">Mesaj hazır gelir, WhatsApp açılır, Gönder'e siz basarsınız. Ücretsizdir. Öğrenci "yaptım" deyince panelde bildirim görürsünüz.</div>
@@ -47,7 +50,7 @@ export function WhatsAppSettings() {
         <div class="hint">Açık ✓ Ödevi kaydettiğiniz an veliye ve öğrenciye, öğrenci "yaptım" dediği an size ve veliye mesaj kendiliğinden gider.</div>
       ) : (
         <div class="warn">
-          <b>Otomatik mesaj için WhatsApp Business numaranızı tanımlayın ve hesabınızı açın.</b> Tanımlanana kadar mesajlar elle gönderilir; programın geri kalanı normal çalışır.
+          <b>Otomatik mesaj için WhatsApp Business numaranızı girin ve hesabınızı açın.</b> Nasıl yapılacağı için <b>?</b> işaretine dokunun. Tanımlanana kadar mesajlar elle gönderilir; programın geri kalanı normal çalışır.
         </div>
       )}
       <button class="btn ghost small" style="align-self:flex-start" onClick={() => setGuide(true)}><Icon name="book" /> Nasıl yapılır? (adım adım)</button>
