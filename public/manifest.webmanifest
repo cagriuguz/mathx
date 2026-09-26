@@ -2,7 +2,6 @@
   "name": "MathX",
   "short_name": "MathX",
   "description": "Ders, ödev ve ödeme takibi: öğretmen, öğrenci ve veli için",
-  "id": "./",
   "scope": "./",
   "display": "standalone",
   "background_color": "#121d33",
