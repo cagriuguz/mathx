@@ -363,3 +363,4 @@ table.t tr.current td { background: var(--brass-soft); }
 .login .install .small { opacity: .8; margin: 2px 0 8px; }
 .login .install .steps { font-size: 14px; line-height: 1.5; margin: 0; padding-left: 18px; }
 .login .install div.steps { padding-left: 0; }
+.login .install .btn.primary { background: #C9A266; border-color: #C9A266; color: #16233B; font-weight: 700; margin-top: 4px; }
