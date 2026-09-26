@@ -275,3 +275,17 @@ test('kitaplar öğrenciye özel: yalnız o öğrencinin kitabı, tekrar engeli,
   assert.equal(cleanBookName('  Palme   Fasikül '), 'Palme Fasikül');
   assert.equal(cleanBookName(null), '');
 });
+
+test('ana ekrana ekle: telefona ve tarayıcıya göre doğru yönlendirme', async () => {
+  const { installKind } = await import('../src/core/install.js');
+  const iphoneSafari = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1';
+  const iphoneChrome = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/129.0 Mobile/15E148 Safari/604.1';
+  const android = 'Mozilla/5.0 (Linux; Android 14; SM-A546B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36';
+  const mac = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15';
+  assert.equal(installKind(iphoneSafari, false, false), 'ios-safari');
+  assert.equal(installKind(iphoneChrome, false, false), 'ios-other');
+  assert.equal(installKind(android, false, false), 'android');
+  assert.equal(installKind(mac, false, false), null, 'bilgisayarda kart çıkmaz');
+  assert.equal(installKind(android, true, false), null, 'ana ekrandan açılınca kart çıkmaz');
+  assert.equal(installKind(android, false, true), null, 'APK içinde kart çıkmaz');
+});

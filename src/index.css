@@ -356,3 +356,10 @@ table.t tr.current td { background: var(--brass-soft); }
 .chip.warn { border: 0; padding: 3px 10px; border-radius: 999px; font-size: 12.5px; line-height: normal; color: var(--amber); }
 /* geniş tablolar sayfayı genişletmesin; tablo kendi içinde yana kayar */
 .stack, .stack-lg { grid-template-columns: minmax(0, 1fr); }
+
+/* Ana ekrana ekle kartı (giriş ekranı) */
+.login .install { display: flex; gap: 12px; align-items: flex-start; margin: 0 0 18px; padding: 14px; border-radius: 14px; background: rgba(255,255,255,.08); color: #fff; text-align: left; }
+.login .install img { width: 44px; height: 44px; border-radius: 10px; flex: none; }
+.login .install .small { opacity: .8; margin: 2px 0 8px; }
+.login .install .steps { font-size: 14px; line-height: 1.5; margin: 0; padding-left: 18px; }
+.login .install div.steps { padding-left: 0; }

@@ -1,6 +1,32 @@
 import { useEffect, useState } from 'preact/hooks';
 import { useApp, Field } from '../ui.jsx';
 import { cleanUsername, checkUsername } from '../store/common.js';
+import { installKind, canPrompt, promptInstall, onInstallChange } from '../core/install.js';
+
+// Telefonda tarayıcıdan açılınca: "MathX'i ana ekrana ekle" (Android'de tek dokunuş, iPhone'da kısa tarif)
+function InstallHint() {
+  const [kind] = useState(() => { try { return installKind(); } catch { return null; } });
+  const [, tick] = useState(0);
+  const [open, setOpen] = useState(false);
+  useEffect(() => onInstallChange(() => tick((n) => n + 1)), []);
+  if (!kind) return null;
+  const share = <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-3px"><path d="M12 3v12M7 8l5-5 5 5M5 12v8h14v-8" /></svg>;
+  return (
+    <div class="install">
+      <img src="./icon-192.png" alt="" />
+      <div class="grow">
+        <b>MathX'i ana ekrana ekleyin</b>
+        <div class="small">Simgesine dokunup uygulama gibi açın; güncellemeler kendiliğinden gelir.</div>
+        {kind === 'android' && canPrompt() && <button type="button" class="btn primary block" onClick={promptInstall}>MathX'i yükle</button>}
+        {kind === 'android' && !canPrompt() && <div class="steps">Chrome'da sağ üstteki <b>⋮</b> menüsüne, sonra <b>Ana ekrana ekle</b>'ye (ya da <b>Uygulamayı yükle</b>'ye) dokunun.</div>}
+        {kind === 'ios-other' && <div class="steps">Bu sayfayı <b>Safari</b>'de açın (bağlantıyı basılı tutup "Safari'de aç"), sonra oradan ana ekrana ekleyin.</div>}
+        {kind === 'ios-safari' && (open
+          ? <ol class="steps"><li>Alttaki <b>Paylaş</b> {share} düğmesine dokunun.</li><li>Listeden <b>Ana Ekrana Ekle</b>'yi seçin.</li><li>Sağ üstte <b>Ekle</b>'ye dokunun.</li></ol>
+          : <button type="button" class="btn primary small" onClick={() => setOpen(true)}>Nasıl eklenir?</button>)}
+      </div>
+    </div>
+  );
+}
 
 export function Login({ onLogin }) {
   const { store } = useApp();
@@ -41,6 +67,7 @@ export function Login({ onLogin }) {
         <img class="logo" src="./logo.svg" alt="" />
         <h1>MathX</h1>
         <p class="tag">{setup ? 'İlk kurulum: öğretmen hesabınızı oluşturun' : 'Ders, ödev ve ödeme takibi'}</p>
+        <InstallHint />
         <form onSubmit={submit}>
           <Field label="Kullanıcı adı">
             <input class="input" autocomplete="username" autocapitalize="none" value={u} onInput={(e) => setU(e.currentTarget.value)} />
