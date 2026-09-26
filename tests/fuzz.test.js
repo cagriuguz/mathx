@@ -4,9 +4,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { allPeriods, studentPeriods, isOpen } from '../src/core/billing.js';
 import { generateLessons, decorateLessons, notHeldReport } from '../src/core/lessons.js';
-import { incomeWeeks, monthView, yearSummary } from '../src/core/finance.js';
+import { incomeWeeks, monthView, yearSummary, paymentGroups, rangeEarnings, incomeForecast, monthsOutlook, expenseList } from '../src/core/finance.js';
 import { msgHomeworkGiven, msgHomeworkDone, msgPaymentLate, msgPackageFull } from '../src/core/messages.js';
-import { addDays, monthKey, diffDays } from '../src/core/dates.js';
+import { addDays, monthKey, diffDays, monthFirst, monthLast } from '../src/core/dates.js';
 
 function rng(seed) {
   let s = seed >>> 0;
@@ -64,7 +64,9 @@ function session(seed) {
       if (s.active !== false) { s.active = false; s.end_date = addDays(today, int(-40, 5)); if (s.end_date < s.start_date) s.end_date = s.start_date; }
       else { s.active = true; s.end_date = null; }
     } else {
-      data.expenses.push({ id: nid(), name: 'Gider', amount: int(1, 500) * 1000, due_day: int(1, 31), start_month: monthKey(addDays(today, -60)), end_month: null, active: true });
+      const eid = nid();
+      data.expenses.push({ id: eid, name: `Gider ${eid}`, amount: int(1, 500) * 1000, due_day: int(1, 31), start_month: monthKey(addDays(today, int(-60, 40))), end_month: r() < 0.3 ? monthKey(addDays(today, int(0, 90))) : null, active: r() < 0.9 });
+      if (r() < 0.4) data.expense_payments.push({ id: nid(), expense_id: eid, month: monthKey(today), paid_date: addDays(today, int(-20, 0)), amount: int(1, 500) * 1000 });
     }
     check(data, today, `seed ${seed} adım ${i}`);
   }
@@ -116,6 +118,43 @@ function check(data, today, where) {
   assert.ok(mv.summary.extra >= 0 && mv.summary.overdue_total >= 0, `${where}: muhasebe tutarsız`);
   assert.equal(periods.filter(isOpen).every((p) => p.due <= today), true, `${where}: vadesi gelmemiş borç açık görünüyor`);
   yearSummary({ payments: data.payments, expenses: data.expenses, expensePayments: data.expense_payments }, today);
+
+  // ── Para bölümü: haftalık döküm ay toplamlarıyla birebir tutar
+  const W = mv.weeks, tot = (k) => W.reduce((a, w) => a + w[k], 0);
+  assert.equal(tot('received'), mv.summary.received, `${where}: haftalık gelen ≠ ay`);
+  assert.equal(tot('expected'), mv.summary.expected, `${where}: haftalık beklenen ≠ ay`);
+  assert.equal(tot('expenses'), mv.summary.expenses_total, `${where}: haftalık gider ≠ ay`);
+  for (const e of mv.expenses) if (e.covered === false) assert.ok(e.short > 0, `${where}: karşılanmıyor ama eksik 0`);
+  for (const t of mv.timeline) assert.ok(Number.isFinite(t.balance), `${where}: bakiye sayı değil`);
+  for (const a of mv.advice) assert.ok(!/undefined|NaN/.test(a.text), `${where}: tavsiyede boşluk: ${a.text}`);
+  const nextMonth = monthKey(addDays(monthLast(monthKey(today)), 1));
+  const mv2 = monthView({ periods, payments: data.payments, expenses: data.expenses, expensePayments: data.expense_payments, settings: { cash_on_hand: 100000 } }, nextMonth, today);
+  assert.ok(mv2.summary.extra >= 0 && mv2.weeks.every((w) => Number.isFinite(w.net)), `${where}: gelecek ay muhasebesi tutarsız`);
+  monthsOutlook({ periods, payments: data.payments, expenses: data.expenses, expensePayments: data.expense_payments, settings: {} }, today, 3);
+  expenseList(data.expenses, today);
+
+  // ── Ödemeler sekmeleri ayrık; kritik/gecikmiş/ödeme zamanı borçlu
+  const g = paymentGroups(periods, today);
+  const seen = new Set();
+  for (const k of ['upcoming', 'due', 'late', 'critical', 'paid']) for (const p of g[k]) { assert.ok(!seen.has(p.key), `${where}: dönem iki sekmede`); seen.add(p.key); }
+  for (const k of ['due', 'late', 'critical']) for (const p of g[k]) assert.ok(p.remaining > 0 && p.due <= today, `${where}: ${k} sekmesinde yanlış dönem`);
+  assert.equal(new Set(g.upcoming.map((p) => p.student_id)).size, g.upcoming.length, `${where}: yaklaşan öğrenci başına tek değil`);
+
+  // ── Tahmin ve tarih aralığında kazanç
+  const fc = incomeForecast(periods, today);
+  assert.equal(fc.length, 5);
+  for (const f of fc) assert.ok(f.remaining >= 0 && f.remaining <= f.expected, `${where}: tahmin tutarsız`);
+  const now = { date: today, time: '12:00' };
+  const ms = monthFirst(monthKey(today)), me = monthLast(monthKey(today));
+  const whole = rangeEarnings(data, {}, periods, ms, me, now);
+  for (const k of ['received', 'expected', 'earned', 'planned', 'done_hours', 'planned_hours']) assert.ok(Number.isFinite(whole[k]) && whole[k] >= 0, `${where}: kazanç ${k} geçersiz`);
+  // Aralık bölünürse kazanç toplanabilir kalır (paket saati sınırı iki kez sayılmaz); yuvarlama payı parça başına 1 kuruş
+  const mid = addDays(ms, 13);
+  const a = rangeEarnings(data, {}, periods, ms, mid, now), b = rangeEarnings(data, {}, periods, addDays(mid, 1), me, now);
+  assert.ok(Math.abs(a.earned + b.earned - whole.earned) <= 2 * (periods.length + 1), `${where}: kazanç toplanabilir değil ${a.earned}+${b.earned}≠${whole.earned}`);
+  assert.equal(a.received + b.received, whole.received, `${where}: alınan toplanabilir değil`);
+  assert.equal(a.expected + b.expected, whole.expected, `${where}: beklenen toplanabilir değil`);
+  assert.equal(a.done_count + b.done_count, whole.done_count, `${where}: ders sayısı toplanabilir değil`);
 }
 
 test('rastgele oturumlar (400 tohum)', () => {

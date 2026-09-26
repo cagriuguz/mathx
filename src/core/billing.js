@@ -21,6 +21,9 @@ export const PLAN_TYPES = {
 
 export const PAY_METHODS = { nakit: 'Nakit', havale: 'Havale / EFT', kart: 'Kart', indirim: 'İndirim (gelir sayılmaz)' };
 
+// Dönemler bugünden bu kadar gün ilerisine kadar üretilir (gelir takviminin 8 hafta ilerisi eksiksiz görünsün diye).
+export const HORIZON_DAYS = 63;
+
 export const DEFAULT_REMIND = { weekly: 3, '4weekly': 5, monthly: 3, oneoff: 3 };
 
 export const STATUS_LABEL = {
@@ -38,9 +41,9 @@ const sumHours = (ls) => ls.reduce((a, l) => a + l.hours, 0);
 
 /**
  * Bir öğrencinin tüm dönemleri.
- * horizon: bu tarihe kadar başlayan dönemler üretilir (gelecek tahmini için bugün + ~5 hafta).
+ * horizon: bu tarihe kadar başlayan dönemler üretilir (varsayılan bugün + HORIZON_DAYS).
  */
-export function studentPeriods(student, { plans, schedules, marks, payments }, today, settings = {}, horizon = addDays(today, 35)) {
+export function studentPeriods(student, { plans, schedules, marks, payments }, today, settings = {}, horizon = addDays(today, HORIZON_DAYS)) {
   const remind = { ...DEFAULT_REMIND, ...(settings.remind_days || {}) };
   const own = plans.filter((p) => p.student_id === student.id).sort((a, b) => a.valid_from.localeCompare(b.valid_from));
   const ownMarks = marksMap(marks.filter((m) => m.student_id === student.id));

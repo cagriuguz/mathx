@@ -5,7 +5,7 @@ import { studentPeriods, packageFull } from '../src/core/billing.js';
 import { ablative, locative, msgHomeworkGiven, isIOS, waHref, msgHomeworkDone, msgPaymentLate, msgPackageFull, msgPaymentReceived, normalizePhone, waLink } from '../src/core/messages.js';
 import { parseTL, fmtTL } from '../src/core/money.js';
 import { dow, addMonths } from '../src/core/dates.js';
-import { incomeWeeks, monthView } from '../src/core/finance.js';
+import { incomeWeeks, monthView, rangeEarnings, paymentGroups, incomeForecast } from '../src/core/finance.js';
 
 const ali = { id: 's1', name: 'Ali Yılmaz', start_date: '2026-09-01', active: true };
 // 2026-09-01 Salı. Salı 17:00 (1 saat) + Cuma 18:00 (1 saat)
@@ -189,4 +189,60 @@ test('sayfa yazımı: "12-15. sayfalar" gibi girişlerde tekrar oluşmaz', async
     'sayfa 30': '30. sayfa', 'sf. 7': '7. sayfa', '40 sayfa.': '40. sayfa', '12, 14, 16': '12, 14, 16. sayfalar',
   };
   for (const [g, c] of Object.entries(beklenen)) assert.equal(pagesText(g), c, g);
+});
+
+test('tarih aralığında kazanç: yapılan / kalan dersler, yapılmayan sayılmaz', () => {
+  // Haftalık 1.000 TL, haftada 2 saat → 1 saat 500 TL. 4 Eylül yapılmadı.
+  const plans = [{ id: 'p', student_id: 's1', valid_from: '2026-09-01', type: 'weekly', fee: 100000 }];
+  const marks = [{ id: 'm', student_id: 's1', date: '2026-09-04', time: '18:00', reason: 'Hasta' }];
+  const data = { students: [ali], ...base({ plans, marks }) };
+  const now = { date: '2026-09-10', time: '12:00' };
+  const periods = studentPeriods(ali, data, now.date);
+  const r = rangeEarnings(data, {}, periods, '2026-09-01', '2026-09-14', now);
+  assert.equal(r.earned, 100000);          // 1 ve 8 Eylül
+  assert.equal(r.planned, 50000);          // 11 Eylül henüz gelmedi
+  assert.equal(r.done_count, 2);
+  assert.equal(r.not_held, 1);
+  assert.equal(r.expected, 150000);        // 1. hafta 500 TL (kesintili) + 2. hafta 1.000 TL
+});
+
+test('tarih aralığında kazanç: tek ödeme paketi saatle sınırlı', () => {
+  const plans = [{ id: 'p', student_id: 's1', valid_from: '2026-09-01', type: 'oneoff', fee: 200000, hours: 4, due_date: '2026-09-30' }];
+  const data = { students: [ali], ...base({ plans }) };
+  const now = { date: '2026-09-16', time: '12:00' };
+  const periods = studentPeriods(ali, data, now.date);
+  // 1, 4, 8 Eylül önceden 3 saat; aralıkta 11 ve 15 yapıldı ama paketin yalnız 1 saati kaldı
+  const r = rangeEarnings(data, {}, periods, '2026-09-09', '2026-09-30', now);
+  assert.equal(r.earned, 50000);
+  assert.equal(r.planned, 0);
+  const all = rangeEarnings(data, {}, periods, '2026-09-01', '2026-09-30', now);
+  assert.equal(all.earned, 200000);
+});
+
+test('ödemeler sekmeleri ve 5 haftalık tahmin', () => {
+  const plans = [{ id: 'p', student_id: 's1', valid_from: '2026-08-04', type: 'weekly', fee: 100000 }];
+  const ali2 = { ...ali, start_date: '2026-08-04' };
+  const periods = studentPeriods(ali2, base({ plans }), '2026-09-10');
+  const g = paymentGroups(periods, '2026-09-10');
+  assert.equal(g.upcoming.length, 1);                         // öğrenci başına en yakın ödeme
+  assert.ok(g.critical.every((p) => p.days_past_due > p.remind_days + 7));
+  assert.ok(g.critical.length > 0 && g.late.length > 0);
+  const fc = incomeForecast(periods, '2026-09-10');
+  assert.equal(fc[0].name, 'Bu hafta');
+  assert.equal(fc[0].expected, 100000);                       // 8–14 Eylül dönemi, vade 14 Eylül
+});
+
+test('muhasebe: karşılanamayan gider, ek para ve haftalık döküm', () => {
+  const plans = [{ id: 'p', student_id: 's1', valid_from: '2026-09-01', type: '4weekly', fee: 400000 }];
+  const periods = studentPeriods(ali, base({ plans }), '2026-10-05');
+  const expenses = [{ id: 'e', name: 'Kira', amount: 500000, due_day: 10, start_month: '2026-01' }];
+  const mv = monthView({ periods, payments: [], expenses, expensePayments: [], settings: { cash_on_hand: 100000 } }, '2026-10', '2026-10-05');
+  const kira = mv.expenses[0];
+  assert.equal(kira.covered, false);
+  assert.equal(kira.short, 400000);                           // 1.000 TL var, 5.000 TL kira
+  assert.equal(mv.summary.extra, 400000);
+  assert.equal(mv.summary.extra_date, '2026-10-10');
+  assert.equal(mv.weeks.reduce((a, w) => a + w.expenses, 0), 500000);
+  assert.ok(mv.advice.some((a) => a.level === 'bad' && a.text.includes('Kira')));
+  assert.ok(mv.advice.some((a) => a.text.includes('Gecikmiş alacağınız')));
 });
