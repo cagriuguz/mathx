@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'preact/hooks';
 import { useApp, useAction, Tabs, Icon, Field, Empty, WaButton } from '../../ui.jsx';
-import { msgHomeworkGiven, msgHomeworkDone } from '../../core/messages.js';
+import { msgHomeworkGiven, msgHomeworkGivenStudent, msgHomeworkDone } from '../../core/messages.js';
 import { addDays, fmtDate, fmtShort } from '../../core/dates.js';
 
 export function Homework() {
@@ -40,7 +40,7 @@ function Give({ goBooks }) {
       await reload();
       // Otomatik modda veliye ve öğrenciye kendiliğinden gider; olmazsa elle gönderme düğmeleri çıkar
       const auto = settings.wa_mode === 'auto';
-      setSaved({ h, text, student, auto: auto ? 'sending' : null });
+      setSaved({ h, text, studentText: msgHomeworkGivenStudent(items, due), student, auto: auto ? 'sending' : null });
       if (auto) {
         const r = await store.waSend('given', h.id);
         setSaved((o) => o && { ...o, auto: r.ok ? 'sent' : 'failed', error: r.error });
@@ -57,7 +57,10 @@ function Give({ goBooks }) {
     return (
       <div class="card card-pad stack">
         <h2 class="section-title">Ödev kaydedildi</h2>
+        <div class="small muted">Veliye giden mesaj</div>
         <div class="msg">{saved.text}</div>
+        <div class="small muted">Öğrenciye giden mesaj</div>
+        <div class="msg">{saved.studentText}</div>
         {saved.auto === 'sending' && <div class="hint">Veliye ve öğrenciye otomatik gönderiliyor…</div>}
         {saved.auto === 'sent' && <div class="chip ok" style="align-self:flex-start">Veliye ve öğrenciye otomatik gönderildi ✓</div>}
         {saved.auto === 'failed' && <div class="warn">Otomatik gönderilemedi: {(saved.error || 'bilinmeyen hata').replace(/\.$/, '')}. Aşağıdan elle gönderin.</div>}
@@ -65,7 +68,7 @@ function Give({ goBooks }) {
           <>
             <div class="row wrap">
               <WaButton phone={saved.student.parent_phone} text={saved.text} label="Veliye gönder" onSent={markSent} />
-              <WaButton phone={saved.student.phone} text={saved.text} label="Öğrenciye gönder" />
+              <WaButton phone={saved.student.phone} text={saved.studentText} label="Öğrenciye gönder" />
             </div>
             <div class="hint">WhatsApp hazır mesajla açılır; göndermek için WhatsApp'ta Gönder'e basın.</div>
           </>
@@ -96,8 +99,15 @@ function Give({ goBooks }) {
         </Field>
       </div>
       <div class="card card-pad stack">
-        <div class="spread"><h2 class="section-title">Gidecek mesaj</h2><span class="muted small">veliye ve öğrenciye</span></div>
-        {text ? <div class="msg">{text}</div> : <div class="muted">Kitapların altına sayfa yazdıkça mesaj burada oluşur.</div>}
+        <h2 class="section-title">Gidecek mesajlar</h2>
+        {text ? (
+          <>
+            <div class="small muted">Veliye</div>
+            <div class="msg">{text}</div>
+            <div class="small muted">Öğrenciye</div>
+            <div class="msg">{msgHomeworkGivenStudent(items, due)}</div>
+          </>
+        ) : <div class="muted">Kitapların altına sayfa yazdıkça mesaj burada oluşur.</div>}
         {err && <div class="error">{err}</div>}
         <button class="btn primary block" disabled={busy} onClick={save}>Kaydet ve gönder</button>
       </div>

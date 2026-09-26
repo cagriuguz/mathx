@@ -176,7 +176,7 @@ function broadcast(table, type) {
 
 // ── Sahte Meta (WhatsApp Cloud API) ──────────────────────────────────────
 export const meta = {
-  approved: new Set(['hello_world', 'mathx_odev_verildi', 'mathx_odev_yapildi']),
+  approved: new Set(['hello_world', 'mathx_odev_verildi', 'mathx_odev_verildi_ogrenci', 'mathx_odev_yapildi']),
   phoneNumberId: '100000000000001', token: 'EAAG-sahte-anahtar', messages: [],
 };
 async function handleMeta(req, res, path) {

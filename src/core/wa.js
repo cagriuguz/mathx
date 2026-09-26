@@ -9,8 +9,9 @@ export const GRAPH_URL = 'https://graph.facebook.com/v23.0';
 export const autoReady = (settings, cfg) => settings?.wa_mode === 'auto' && !!cfg?.phone_number_id && !!cfg?.has_token;
 
 /**
- * Hangi şablon kime gidecek?  Dönüş: { skip } | { error, status } | { template, params, to, flag, sentField }
- * given: öğretmen ödevi kaydedince → veli + öğrenci.  done: öğrenci "yaptım" deyince → öğretmen + veli.
+ * Hangi şablon kime gidecek?  Dönüş: { skip } | { error, status } | { sends: [{ to, template, params }], flag, sentField }
+ * given: öğretmen ödevi kaydedince → veliye veli şablonu, öğrenciye öğrenci şablonu.
+ * done: öğrenci "yaptım" deyince → öğretmen + veli.
  */
 export function planHomeworkMessage({ kind, profile, homework: h, student: s, settings }) {
   if (!profile) return { error: 'Oturum yok', status: 401 };
@@ -24,15 +25,20 @@ export function planHomeworkMessage({ kind, profile, homework: h, student: s, se
   if (kind === 'given') {
     if (!teacher) return { error: 'Yetki yok', status: 403 };
     if (h.wa_given_at) return { skip: 'already' };
-    plan = { template: WA_TEMPLATES.given, params: homeworkGivenParams(h.items, h.due_date), to: [s.parent_phone, s.phone], flag: 'wa_given_at', sentField: 'sent_given' };
+    const params = homeworkGivenParams(h.items, h.due_date);
+    plan = { sends: [{ to: s.parent_phone, template: WA_TEMPLATES.given, params }, { to: s.phone, template: WA_TEMPLATES.givenStudent, params }], flag: 'wa_given_at', sentField: 'sent_given' };
   } else if (kind === 'done') {
     if (!teacher && !own) return { error: 'Yetki yok', status: 403 };
     if (!h.done) return { skip: 'not-done' };
     if (h.wa_done_at) return { skip: 'already' }; // geri alıp yeniden işaretlemek ikinci mesaj göndermez
-    plan = { template: WA_TEMPLATES.done, params: homeworkDoneParams(s.name, h.items), to: [settings.teacher_phone, s.parent_phone], flag: 'wa_done_at', sentField: 'sent_done' };
+    const params = homeworkDoneParams(s.name, h.items);
+    plan = { sends: [settings.teacher_phone, s.parent_phone].map((to) => ({ to, template: WA_TEMPLATES.done, params })), flag: 'wa_done_at', sentField: 'sent_done' };
   } else return { error: 'Bilinmeyen mesaj türü', status: 400 };
-  plan.to = [...new Set(plan.to.filter(isValidPhone).map(normalizePhone))];
-  if (!plan.to.length) return { error: 'Geçerli telefon numarası yok', status: 422 };
+  // Geçersiz numara atlanır; aynı numara iki kez yazılmışsa (ör. öğrenci numarası = veli numarası) ilk gelen (veli) kalır
+  const seen = new Set();
+  plan.sends = plan.sends.filter((m) => isValidPhone(m.to)).map((m) => ({ ...m, to: normalizePhone(m.to) }))
+    .filter((m) => !seen.has(m.to) && seen.add(m.to));
+  if (!plan.sends.length) return { error: 'Geçerli telefon numarası yok', status: 422 };
   return plan;
 }
 

@@ -58,7 +58,7 @@ Deno.serve(async (req) => {
     if (plan.error) return json({ ok: false, error: plan.error }, plan.status || 400);
     if (!ready) return json({ ok: false, error: 'WhatsApp Business tanımlı değil; mesaj elle gönderilmeli.' });
 
-    const results = await Promise.all(plan.to.map((to) => sendTemplate(cfg, to, plan.template, plan.params)));
+    const results = await Promise.all(plan.sends.map((m) => sendTemplate(cfg, m.to, m.template, m.params)));
     const sent = results.filter((r) => r.ok).length;
     if (sent === results.length) {
       await admin.from('homework').update({ [plan.flag]: new Date().toISOString(), [plan.sentField]: true }).eq('id', homework.id);

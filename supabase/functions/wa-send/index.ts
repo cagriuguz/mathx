@@ -145,13 +145,17 @@ const ablative = (name) => {
 	return `${name}'${n}${n ? suffix(name, "abl").replace(/^t/, "d") : suffix(name, "abl")}`;
 };
 function pagesText(pages) {
-	const p = String(pages).trim();
+	const p = String(pages).trim().replace(/[.\s]+$/, "").replace(/^(sayfa(lar)?|sf\.?|s\.)\s*/i, "").replace(/[.\s]*(sayfa(lar)?(ı|ın)?|sf\.?|s\.?)$/i, "").replace(/[.\s]+$/, "");
 	return /[-–,\s]/.test(p) ? `${p}. sayfalar` : `${p}. sayfa`;
 }
 const WA_TEMPLATES = {
 	given: {
 		name: "mathx_odev_verildi",
 		body: "Sayın veli, öğrencinizin {{1}} ödevi verilmiştir. Son bitirme tarihi: {{2}}."
+	},
+	givenStudent: {
+		name: "mathx_odev_verildi_ogrenci",
+		body: "Merhaba, {{1}} ödevin verildi. Son bitirme tarihi: {{2}}. Kolay gelsin."
 	},
 	done: {
 		name: "mathx_odev_yapildi",
@@ -179,8 +183,9 @@ const isValidPhone = (phone) => /^905\d{9}$/.test(normalizePhone(phone));
 //#region src/core/wa.js
 const GRAPH_URL = "https://graph.facebook.com/v23.0";
 /**
-* Hangi şablon kime gidecek?  Dönüş: { skip } | { error, status } | { template, params, to, flag, sentField }
-* given: öğretmen ödevi kaydedince → veli + öğrenci.  done: öğrenci "yaptım" deyince → öğretmen + veli.
+* Hangi şablon kime gidecek?  Dönüş: { skip } | { error, status } | { sends: [{ to, template, params }], flag, sentField }
+* given: öğretmen ödevi kaydedince → veliye veli şablonu, öğrenciye öğrenci şablonu.
+* done: öğrenci "yaptım" deyince → öğretmen + veli.
 */
 function planHomeworkMessage({ kind, profile, homework: h, student: s, settings }) {
 	if (!profile) return {
@@ -192,6 +197,7 @@ function planHomeworkMessage({ kind, profile, homework: h, student: s, settings 
 		error: "Ödev bulunamadı",
 		status: 404
 	};
+	if (!(h.items || []).some((i) => String(i.pages || "").trim())) return { skip: "no-items" };
 	const teacher = profile.role === "teacher";
 	const own = profile.role === "student" && profile.student_id === h.student_id;
 	let plan;
@@ -201,10 +207,17 @@ function planHomeworkMessage({ kind, profile, homework: h, student: s, settings 
 			status: 403
 		};
 		if (h.wa_given_at) return { skip: "already" };
+		const params = homeworkGivenParams(h.items, h.due_date);
 		plan = {
-			template: WA_TEMPLATES.given,
-			params: homeworkGivenParams(h.items, h.due_date),
-			to: [s.parent_phone, s.phone],
+			sends: [{
+				to: s.parent_phone,
+				template: WA_TEMPLATES.given,
+				params
+			}, {
+				to: s.phone,
+				template: WA_TEMPLATES.givenStudent,
+				params
+			}],
 			flag: "wa_given_at",
 			sentField: "sent_given"
 		};
@@ -215,10 +228,13 @@ function planHomeworkMessage({ kind, profile, homework: h, student: s, settings 
 		};
 		if (!h.done) return { skip: "not-done" };
 		if (h.wa_done_at) return { skip: "already" };
+		const params = homeworkDoneParams(s.name, h.items);
 		plan = {
-			template: WA_TEMPLATES.done,
-			params: homeworkDoneParams(s.name, h.items),
-			to: [settings.teacher_phone, s.parent_phone],
+			sends: [settings.teacher_phone, s.parent_phone].map((to) => ({
+				to,
+				template: WA_TEMPLATES.done,
+				params
+			})),
 			flag: "wa_done_at",
 			sentField: "sent_done"
 		};
@@ -226,8 +242,12 @@ function planHomeworkMessage({ kind, profile, homework: h, student: s, settings 
 		error: "Bilinmeyen mesaj türü",
 		status: 400
 	};
-	plan.to = [...new Set(plan.to.filter(isValidPhone).map(normalizePhone))];
-	if (!plan.to.length) return {
+	const seen = /* @__PURE__ */ new Set();
+	plan.sends = plan.sends.filter((m) => isValidPhone(m.to)).map((m) => ({
+		...m,
+		to: normalizePhone(m.to)
+	})).filter((m) => !seen.has(m.to) && seen.add(m.to));
+	if (!plan.sends.length) return {
 		error: "Geçerli telefon numarası yok",
 		status: 422
 	};
@@ -359,7 +379,7 @@ Deno.serve(async (req) => {
 			ok: false,
 			error: "WhatsApp Business tanımlı değil; mesaj elle gönderilmeli."
 		});
-		const results = await Promise.all(plan.to.map((to) => sendTemplate(cfg, to, plan.template, plan.params)));
+		const results = await Promise.all(plan.sends.map((m) => sendTemplate(cfg, m.to, m.template, m.params)));
 		const sent = results.filter((r) => r.ok).length;
 		if (sent === results.length) await admin.from("homework").update({
 			[plan.flag]: (/* @__PURE__ */ new Date()).toISOString(),

@@ -64,6 +64,8 @@ export function pagesText(pages) {
 // Elle gönderilen mesaj da AYNI şablondan üretilir; böylece iki yol birebir aynı metni yollar.
 export const WA_TEMPLATES = {
   given: { name: 'mathx_odev_verildi', body: 'Sayın veli, öğrencinizin {{1}} ödevi verilmiştir. Son bitirme tarihi: {{2}}.' },
+  // Öğrenciye giden ödev mesajı ayrı şablon: "Sayın veli" yerine öğrenciye hitap eder
+  givenStudent: { name: 'mathx_odev_verildi_ogrenci', body: 'Merhaba, {{1}} ödevin verildi. Son bitirme tarihi: {{2}}. Kolay gelsin.' },
   done: { name: 'mathx_odev_yapildi', body: 'Sayın veli, {{1}} isimli öğrenciniz {{2}} ödevini yapmıştır.' },
 };
 export const fillTemplate = (body, params) => body.replace(/\{\{(\d+)\}\}/g, (_, i) => params[i - 1]);
@@ -81,6 +83,9 @@ export function homeworkDoneParams(studentName, items) {
 
 /** 1) Ödev verildi (öğrenci adı yazılmaz) */
 export const msgHomeworkGiven = (items, dueDate) => fillTemplate(WA_TEMPLATES.given.body, homeworkGivenParams(items, dueDate));
+
+/** 1b) Ödev verildi — öğrenciye (aynı bilgiler, öğrenciye hitapla) */
+export const msgHomeworkGivenStudent = (items, dueDate) => fillTemplate(WA_TEMPLATES.givenStudent.body, homeworkGivenParams(items, dueDate));
 
 /** 5) Ödev yapıldı (madde 8) — veliye ve öğretmene */
 export const msgHomeworkDone = (studentName, items) => fillTemplate(WA_TEMPLATES.done.body, homeworkDoneParams(studentName, items));
