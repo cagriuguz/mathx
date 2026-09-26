@@ -418,7 +418,7 @@ table.t tr.current td { background: var(--brass-soft); }
   color: #16233b; background: #e6cf9f; cursor: pointer; }
 .kbtn.ghost { background: rgba(255,255,255,.1); color: #f5f6f8; border: 1px solid rgba(255,255,255,.18); font-weight: 600; }
 .kcard { display: grid; gap: 10px; }
-.ktext { width: 100%; box-sizing: border-box; font-family: ui-monospace, Menlo, monospace; font-size: 13px; resize: vertical; }
+.ktext { width: 100%; box-sizing: border-box; color: #16233b; background: #fff; font-family: ui-monospace, Menlo, monospace; font-size: 13px; resize: vertical; }
 .kchk { display: flex; gap: 14px; font-size: 13.5px; color: rgba(245,246,248,.6); }
 .kchk .on { color: #7fd1a8; font-weight: 700; }
 .kchk .bad { color: #ff9b8f; font-weight: 700; }

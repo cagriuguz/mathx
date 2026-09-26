@@ -16,6 +16,9 @@ test('adres ve anahtar ayrı ayrı, boşluklu yapıştırılsa da çözülür', 
   assert.deepEqual(parseConn(`  https://${REF}.supabase.co/  \n\n ${PUB} `), { ref: REF, key: PUB });
   assert.deepEqual(parseConn(''), { ref: null, key: null });
   assert.equal(parseConn('https://kotu.example.com').ref, null);
+  // Adres bulunamazsa panel sayfasının linki de olur
+  assert.equal(parseConn(`https://supabase.com/dashboard/project/${REF}/settings/api-keys`).ref, REF);
+  assert.equal(parseConn(`https://supabase.com/dashboard/project/${REF}x`).ref, null);
 });
 
 test('gizli anahtar reddedilir, publishable/anon kabul edilir', () => {

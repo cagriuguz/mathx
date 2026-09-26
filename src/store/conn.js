@@ -23,7 +23,8 @@ export function checkKey(k) {
 /** Yapıştırılan metinden (tek tek ya da Supabase "Connect" penceresindeki blok) proje kodunu ve anahtarı bulur */
 export function parseConn(text) {
   const s = String(text || '');
-  const ref = (s.match(/https?:\/\/([a-z0-9]{20})\.supabase\.co/) || [])[1] || null;
+  // Adres ya da Supabase panelindeki sayfa linki (supabase.com/dashboard/project/<kod>/...)
+  const ref = (s.match(/https?:\/\/([a-z0-9]{20})\.supabase\.co/) || s.match(/supabase\.com\/dashboard\/project\/([a-z0-9]{20})(?![a-z0-9])/) || [])[1] || null;
   const secret = (s.match(/sb_secret_[A-Za-z0-9_-]+/) || [])[0];
   const key = secret || (s.match(/sb_publishable_[A-Za-z0-9_-]+/) || [])[0] || (s.match(/eyJ[\w-]+\.[\w-]+\.[\w-]+/) || [])[0] || null;
   return { ref, key };
