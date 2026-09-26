@@ -52,7 +52,11 @@ export const ablative = (name) => { const n = buffer(name); return `${name}'${n}
 export const locative = (name) => { const n = buffer(name); return `${name}'${n}${n ? suffix(name, 'loc').replace(/^t/, 'd') : suffix(name, 'loc')}`; };
 
 export function pagesText(pages) {
-  const p = String(pages).trim();
+  // Öğretmen "12-15. sayfalar", "sayfa 30", "s. 12-15" yazsa da "sayfalar. sayfalar" gibi tekrar oluşmasın
+  const p = String(pages).trim().replace(/[.\s]+$/, '')
+    .replace(/^(sayfa(lar)?|sf\.?|s\.)\s*/i, '')
+    .replace(/[.\s]*(sayfa(lar)?(ı|ın)?|sf\.?|s\.?)$/i, '')
+    .replace(/[.\s]+$/, '');
   return /[-–,\s]/.test(p) ? `${p}. sayfalar` : `${p}. sayfa`;
 }
 

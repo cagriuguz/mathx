@@ -180,3 +180,13 @@ test('gelir takvimi ve muhasebe', () => {
   assert.equal(mv.summary.overdue_total, 300000);
   assert.ok(mv.summary.extra > 0);
 });
+
+test('sayfa yazımı: "12-15. sayfalar" gibi girişlerde tekrar oluşmaz', async () => {
+  const { pagesText } = await import('../src/core/messages.js');
+  const beklenen = {
+    '12-15': '12-15. sayfalar', '12-15. sayfalar': '12-15. sayfalar', '12-15 sayfalar': '12-15. sayfalar',
+    's. 12-15': '12-15. sayfalar', 'Sayfalar 3-5': '3-5. sayfalar', '30': '30. sayfa', '30. sayfa': '30. sayfa',
+    'sayfa 30': '30. sayfa', 'sf. 7': '7. sayfa', '40 sayfa.': '40. sayfa', '12, 14, 16': '12, 14, 16. sayfalar',
+  };
+  for (const [g, c] of Object.entries(beklenen)) assert.equal(pagesText(g), c, g);
+});
