@@ -1,0 +1,221 @@
+-- MathX veritabanı kurulumu (Supabase → SQL Editor → bu dosyanın tamamını yapıştır → Run).
+-- Tekrar çalıştırmak güvenlidir: var olan tabloları/verileri SİLMEZ.
+
+create extension if not exists pgcrypto with schema extensions;
+
+-- ───────────── Tablolar
+create table if not exists public.profiles (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  username text unique not null,
+  role text not null check (role in ('teacher','parent','student')),
+  student_id uuid,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.students (
+  id uuid primary key default gen_random_uuid(),
+  name text not null check (char_length(name) between 2 and 80),
+  phone text not null,
+  parent_name text not null,
+  parent_phone text not null,
+  student_username text,
+  parent_username text,
+  start_date date not null,
+  active boolean not null default true,
+  end_date date,
+  note text default '',
+  consent boolean default false,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.schedules (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid not null references public.students(id) on delete cascade,
+  valid_from date not null,
+  slots jsonb not null default '[]'
+);
+
+create table if not exists public.plans (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid not null references public.students(id) on delete cascade,
+  valid_from date not null,
+  type text not null check (type in ('weekly','4weekly','monthly','oneoff')),
+  fee bigint not null check (fee >= 0),
+  hours numeric,
+  due_date date
+);
+
+create table if not exists public.marks (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid not null references public.students(id) on delete cascade,
+  date date not null,
+  time text not null,
+  reason text not null check (char_length(reason) between 1 and 50),
+  created_at timestamptz default now(),
+  unique (student_id, date, time)
+);
+
+create table if not exists public.payments (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid not null references public.students(id) on delete cascade,
+  period_key text not null,
+  amount bigint not null check (amount > 0),
+  paid_date date not null,
+  method text not null default 'nakit',
+  note text default '',
+  deleted_at timestamptz,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.books (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  active boolean not null default true
+);
+
+create table if not exists public.homework (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid not null references public.students(id) on delete cascade,
+  given_date date not null,
+  due_date date not null,
+  items jsonb not null default '[]',
+  note text default '',
+  done boolean not null default false,
+  done_at timestamptz,
+  sent_given boolean default false,
+  sent_done boolean default false,
+  seen_done boolean default true
+);
+
+create table if not exists public.expenses (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  category text default 'Diğer',
+  amount bigint not null check (amount > 0),
+  due_day int not null default 1 check (due_day between 1 and 31),
+  start_month text not null,
+  end_month text,
+  active boolean not null default true,
+  note text default '',
+  deleted_at timestamptz
+);
+
+create table if not exists public.expense_payments (
+  id uuid primary key default gen_random_uuid(),
+  expense_id uuid not null references public.expenses(id) on delete cascade,
+  month text not null,
+  paid_date date not null,
+  amount bigint not null,
+  deleted_at timestamptz
+);
+
+create table if not exists public.settings (
+  id text primary key default 'main',
+  teacher_name text default '',
+  teacher_phone text default '',
+  remind_days jsonb default '{"weekly":3,"4weekly":5,"monthly":3,"oneoff":3}',
+  cash_on_hand bigint default 0
+);
+
+-- ───────────── Yardımcı işlevler
+create or replace function public.my_role() returns text language sql stable security definer set search_path = public as
+$$ select role from public.profiles where user_id = auth.uid() $$;
+
+create or replace function public.my_student_id() returns uuid language sql stable security definer set search_path = public as
+$$ select student_id from public.profiles where user_id = auth.uid() $$;
+
+create or replace function public.is_teacher() returns boolean language sql stable security definer set search_path = public as
+$$ select coalesce((select role = 'teacher' from public.profiles where user_id = auth.uid()), false) $$;
+
+create or replace function public.teacher_exists() returns boolean language sql stable security definer set search_path = public as
+$$ select exists(select 1 from public.profiles where role = 'teacher') $$;
+
+-- İlk kurulum: öğretmen yoksa, giriş yapan kişi öğretmen olur. Öğretmen varsa hiçbir şey yapmaz.
+create or replace function public.claim_teacher(p_username text) returns boolean language plpgsql security definer set search_path = public as
+$$ begin
+  if auth.uid() is null then raise exception 'Giriş gerekli'; end if;
+  if exists(select 1 from public.profiles where role = 'teacher') then raise exception 'Öğretmen hesabı zaten var'; end if;
+  insert into public.profiles(user_id, username, role) values (auth.uid(), p_username, 'teacher');
+  insert into public.settings(id) values ('main') on conflict do nothing;
+  return true;
+end $$;
+
+create or replace function public.username_taken(p_username text) returns boolean language plpgsql security definer set search_path = public as
+$$ begin
+  if not public.is_teacher() then raise exception 'Yetki yok'; end if;
+  return exists(select 1 from public.profiles where username = p_username)
+      or exists(select 1 from auth.users where email = p_username || '@kullanici.mathx.app');
+end $$;
+
+create or replace function public.admin_set_password(p_username text, p_password text) returns void language plpgsql security definer set search_path = public, extensions as
+$$ declare uid uuid; begin
+  if not public.is_teacher() then raise exception 'Yetki yok'; end if;
+  select user_id into uid from public.profiles where username = p_username and role <> 'teacher';
+  if uid is null then raise exception 'Hesap bulunamadı'; end if;
+  update auth.users set encrypted_password = extensions.crypt(p_password, extensions.gen_salt('bf')) where id = uid;
+end $$;
+
+create or replace function public.delete_accounts_for(p_student uuid) returns void language plpgsql security definer set search_path = public as
+$$ begin
+  if not public.is_teacher() then raise exception 'Yetki yok'; end if;
+  delete from auth.users where id in (select user_id from public.profiles where student_id = p_student and role <> 'teacher');
+end $$;
+
+-- Öğrenci yalnızca KENDİ ödevinin "yaptım" işaretini değiştirebilir (başka alan değişmez).
+create or replace function public.set_homework_done(p_id uuid, p_done boolean) returns void language plpgsql security definer set search_path = public as
+$$ begin
+  if public.is_teacher() then null;
+  elsif public.my_role() = 'student' and exists(select 1 from public.homework where id = p_id and student_id = public.my_student_id()) then null;
+  else raise exception 'Bu ödeve erişiminiz yok'; end if;
+  update public.homework set done = p_done, done_at = case when p_done then now() else null end,
+         seen_done = not p_done, sent_done = false where id = p_id;
+end $$;
+
+create or replace function public.my_student_name() returns text language sql stable security definer set search_path = public as
+$$ select name from public.students where id = public.my_student_id() $$;
+
+revoke all on function public.admin_set_password(text, text) from anon;
+revoke all on function public.delete_accounts_for(uuid) from anon;
+grant execute on function public.teacher_exists() to anon, authenticated;
+
+-- ───────────── Satır güvenliği (RLS)
+alter table public.profiles enable row level security;
+alter table public.students enable row level security;
+alter table public.schedules enable row level security;
+alter table public.plans enable row level security;
+alter table public.marks enable row level security;
+alter table public.payments enable row level security;
+alter table public.books enable row level security;
+alter table public.homework enable row level security;
+alter table public.expenses enable row level security;
+alter table public.expense_payments enable row level security;
+alter table public.settings enable row level security;
+
+do $$ declare t text; begin
+  -- Eski kuralları temizle (yeniden çalıştırmada çakışmasın)
+  for t in select tablename from pg_tables where schemaname = 'public' and tablename in
+    ('profiles','students','schedules','plans','marks','payments','books','homework','expenses','expense_payments','settings') loop
+    execute format('drop policy if exists teacher_all on public.%I', t);
+    execute format('drop policy if exists parent_read on public.%I', t);
+    execute format('drop policy if exists own_read on public.%I', t);
+    execute format('create policy teacher_all on public.%I for all to authenticated using (public.is_teacher()) with check (public.is_teacher())', t);
+  end loop;
+end $$;
+
+create policy own_read on public.profiles for select to authenticated using (user_id = auth.uid());
+-- Veli: yalnızca kendi öğrencisi (öğrenci rolü bu tabloları HİÇ okuyamaz)
+create policy parent_read on public.students  for select to authenticated using (public.my_role() = 'parent' and id = public.my_student_id());
+create policy parent_read on public.schedules for select to authenticated using (public.my_role() = 'parent' and student_id = public.my_student_id());
+create policy parent_read on public.plans     for select to authenticated using (public.my_role() = 'parent' and student_id = public.my_student_id());
+create policy parent_read on public.marks     for select to authenticated using (public.my_role() = 'parent' and student_id = public.my_student_id());
+create policy parent_read on public.payments  for select to authenticated using (public.my_role() = 'parent' and student_id = public.my_student_id());
+-- Ödev: veli ve öğrenci yalnızca kendi öğrencisininkini okur
+create policy parent_read on public.homework  for select to authenticated using (public.my_role() in ('parent','student') and student_id = public.my_student_id());
+
+-- ───────────── Anlık güncelleme (bir telefonda yapılan değişiklik diğerlerinde hemen görünür)
+do $$ declare t text; begin
+  foreach t in array array['students','schedules','plans','marks','payments','books','homework','expenses','expense_payments','settings'] loop
+    begin execute format('alter publication supabase_realtime add table public.%I', t);
+    exception when duplicate_object then null; end;
+  end loop;
+end $$;
