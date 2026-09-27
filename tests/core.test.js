@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateLessons, decorateLessons, cleanReason, notHeldReport, lessonSummary } from '../src/core/lessons.js';
+import { generateLessons, decorateLessons, cleanReason, notHeldReport, lessonSummary, lessonsFor } from '../src/core/lessons.js';
 import { studentPeriods, packageFull } from '../src/core/billing.js';
 import { ablative, locative, msgHomeworkGiven, isIOS, waHref, msgHomeworkDone, msgPaymentLate, msgPackageFull, msgPaymentReceived, normalizePhone, waLink } from '../src/core/messages.js';
 import { parseTL, fmtTL } from '../src/core/money.js';
@@ -159,7 +159,7 @@ test('ders raporu', () => {
   assert.equal(r.length, 1);
   assert.equal(r[0].student_name, 'Ali Yılmaz');
   // Eylül 2026: 5 Salı + 4 Cuma = 9 ders; 15'i yapılmadı, 29'u henüz gelmedi (bugün 26 Eylül)
-  const sum = lessonSummary([ali], sched, marks, '2026-09-01', '2026-09-30', { date: '2026-09-26', time: '12:00' });
+  const sum = lessonSummary([ali], { schedules: sched, marks }, '2026-09-01', '2026-09-30', { date: '2026-09-26', time: '12:00' });
   assert.deepEqual([sum.done, sum.not_held, sum.upcoming, sum.rows[0].total], [7, 1, 1, 9]);
 });
 
@@ -290,3 +290,53 @@ test('ana ekrana ekle: telefona ve tarayıcıya göre doğru yönlendirme', asyn
   assert.equal(installKind(android, false, true), null, 'APK içinde kart çıkmaz');
   assert.equal(installKind('Mozilla/5.0 (Linux; Android 14; SM-A546B Build/UP1A; wv) AppleWebKit/537.36 Chrome/128.0 Mobile Safari/537.36 Instagram 350.0', false, false), 'android-inapp', 'Instagram içi tarayıcı');
 });
+
+test('ek ders paketi doldurur: 2 hafta + 1 haftalık ek ders = 3 hafta', () => {
+  // Salı+Cuma 1'er saat → 4 haftalık paket 8 saat. 2. hafta Çarşamba+Perşembe 1'er saat ek ders.
+  const plans = [{ id: 'p', student_id: 's1', valid_from: '2026-09-01', type: '4weekly', fee: 400000 }];
+  const extra_lessons = [
+    { id: 'e1', student_id: 's1', date: '2026-09-09', time: '16:00', hours: 1, note: '' },
+    { id: 'e2', student_id: 's1', date: '2026-09-10', time: '16:00', hours: 1, note: 'Sınav öncesi' },
+  ];
+  const ps = studentPeriods(ali, base({ plans, extra_lessons }), '2026-09-20');
+  assert.equal(ps[0].end, '2026-09-21');          // 3. haftanın son dersi 18 Eylül Cuma; paket orada dolar
+  assert.equal(ps[0].shortened, true);
+  assert.equal(ps[0].cal_end, '2026-09-28');
+  assert.equal(ps[0].extra_hours, 2);
+  assert.equal(ps[0].scheduled_hours, 6);
+  assert.equal(ps[0].amount, 400000);              // ek ders ücrete eklenmez
+  assert.equal(ps[1].start, '2026-09-22');         // yeni paket hemen başlar
+  assert.equal(ps[1].end, '2026-10-19');
+  // Ödeme 1. dönemin anahtarında kalır
+  const paid = [{ id: 'x', student_id: 's1', period_key: 'p#1', amount: 400000, paid_date: '2026-09-21', method: 'nakit' }];
+  assert.equal(studentPeriods(ali, base({ plans, extra_lessons, payments: paid }), '2026-09-25')[0].status, 'paid');
+  // Ek ders silinince eski hesaba döner
+  assert.equal(studentPeriods(ali, base({ plans }), '2026-09-20')[0].end, '2026-09-28');
+  // Yarım haftalık ek ders (1 saat) paketi yalnızca 1 ders erken doldurur
+  const one = studentPeriods(ali, base({ plans, extra_lessons: extra_lessons.slice(0, 1) }), '2026-09-20');
+  assert.equal(one[0].end, '2026-09-24');          // 25 Eylül Cuma dersi yeni pakete kalır
+  assert.equal(one[1].start, '2026-09-25');
+  // Takvim ve rapor ek dersi gösterir
+  const ls = lessonsFor(ali, base({ extra_lessons }), '2026-09-07', '2026-09-13');
+  assert.deepEqual(ls.map((l) => l.date + (l.extra ? '+' : '')), ['2026-09-08', '2026-09-09+', '2026-09-10+', '2026-09-11']);
+  const sum = lessonSummary([ali], base({ extra_lessons }), '2026-09-01', '2026-09-30', { date: '2026-09-26', time: '12:00' });
+  assert.equal(sum.extra, 2);
+  assert.equal(sum.done, 10);
+});
+
+test('ek ders: aylık pakette ve tek ödeme paketinde', () => {
+  const monthly = [{ id: 'm', student_id: 's1', valid_from: '2026-09-01', type: 'monthly', fee: 360000 }];
+  const extra_lessons = [{ id: 'e1', student_id: 's1', date: '2026-09-02', time: '10:00', hours: 2, note: '' }];
+  const ps = studentPeriods(ali, base({ plans: monthly, extra_lessons }), '2026-09-05');
+  assert.ok(ps[0].end < '2026-09-30' && ps[0].shortened);
+  assert.equal(ps[1].start, addDays1(ps[0].end));
+  const oneoff = [{ id: 'o', student_id: 's1', valid_from: '2026-09-01', type: 'oneoff', fee: 100000, hours: 4, due_date: '2026-09-01' }];
+  const o = studentPeriods(ali, base({ plans: oneoff, extra_lessons }), '2026-09-05')[0];
+  assert.equal(o.used_hours, 4);                   // 2 program dersi + 2 saat ek ders
+  assert.equal(packageFull(o), true);
+  // Başlangıçtan önceki ek ders sayılmaz
+  const early = [{ id: 'e0', student_id: 's1', date: '2026-08-20', time: '10:00', hours: 2, note: '' }];
+  assert.equal(studentPeriods(ali, base({ plans: monthly, extra_lessons: early }), '2026-09-05')[0].shortened, false);
+});
+
+const addDays1 = (iso) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); };

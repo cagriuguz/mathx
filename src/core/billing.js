@@ -8,9 +8,13 @@
 //
 // Kesinti (madde 2 ve 5): 1 ders saatinin değeri = dönem ücreti / dönemdeki planlı ders saati;
 // yapılmayan ders saati × bu değer dönem tutarından düşülür. Yapılmayan ders yoksa tutar aynen kalır.
+// Ek ders (madde: "fazladan ders yaptım"): dönemin planlı ders saatini doldurur. Programdaki dersler + ek dersler
+// dönemin tam ders saatine ulaştığı anda dönem biter, bir sonraki dönem ertesi gün başlar. Örn. haftada 2 saat,
+// 4 haftalık paket (8 saat): 2. hafta 2 saat ek ders yapılırsa paket 3. haftanın son dersinde dolar.
+// Tek Ödeme paketinde ek ders kullanılan saate eklenir. Ek ders ayrıca ücretlendirilmez.
 // Vade = dönemin son günü. Hatırlatma, vadeden N gün SONRA verilir (aylık 3, 4 haftalık 5; Ayarlar'dan değişir).
 import { addDays, addMonths, diffDays } from './dates.js';
-import { generateLessons, marksMap, lessonKey } from './lessons.js';
+import { generateLessons, extraLessons, marksMap, lessonKey } from './lessons.js';
 
 export const PLAN_TYPES = {
   weekly: 'Haftalık',
@@ -40,10 +44,28 @@ function periodEnd(type, start) {
 const sumHours = (ls) => ls.reduce((a, l) => a + l.hours, 0);
 
 /**
+ * Ek dersli dönemin bitişi: programdaki + ek derslerin toplamı dönemin tam ders saatine ulaştığı dersin günü,
+ * o günden sonraki ilk dersin bir gün öncesine kadar uzatılır (takvim bitişini geçmez). Dolmazsa takvim bitişi.
+ */
+function filledEnd(full, extras, fullHours, calEnd) {
+  if (fullHours <= 0) return calEnd;
+  const all = full.concat(extras).sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time));
+  let acc = 0;
+  for (const l of all) {
+    acc += l.hours;
+    if (acc >= fullHours - 1e-9) {
+      const next = all.find((x) => x.date > l.date);
+      return next ? addDays(next.date, -1) : calEnd;
+    }
+  }
+  return calEnd;
+}
+
+/**
  * Bir öğrencinin tüm dönemleri.
  * horizon: bu tarihe kadar başlayan dönemler üretilir (varsayılan bugün + HORIZON_DAYS).
  */
-export function studentPeriods(student, { plans, schedules, marks, payments }, today, settings = {}, horizon = addDays(today, HORIZON_DAYS)) {
+export function studentPeriods(student, { plans, schedules, marks, payments, extra_lessons }, today, settings = {}, horizon = addDays(today, HORIZON_DAYS)) {
   const remind = { ...DEFAULT_REMIND, ...(settings.remind_days || {}) };
   const own = plans.filter((p) => p.student_id === student.id).sort((a, b) => a.valid_from.localeCompare(b.valid_from));
   const ownMarks = marksMap(marks.filter((m) => m.student_id === student.id));
@@ -64,14 +86,16 @@ export function studentPeriods(student, { plans, schedules, marks, payments }, t
 
     if (plan.type === 'oneoff') {
       const end = hardEnd || '9999-12-31';
-      const ls = generateLessons(student, schedules, plan.valid_from, end < horizon ? end : horizon);
-      const usedHours = sumHours(ls.filter((l) => !ownMarks.has(l.key) && l.date <= today));
+      const last = end < horizon ? end : horizon;
+      const ls = generateLessons(student, schedules, plan.valid_from, last);
+      const ex = extraLessons(student, extra_lessons, plan.valid_from, last).filter((l) => l.date <= today);
+      const usedHours = sumHours(ls.filter((l) => !ownMarks.has(l.key) && l.date <= today)) + sumHours(ex);
       out.push(finish({
         key: `${plan.id}#1`, plan_id: plan.id, type: 'oneoff', seq: 1,
         start: plan.valid_from, end: hardEnd, due: plan.due_date || plan.valid_from,
         base: plan.fee, fee: plan.fee, scheduled_hours: Number(plan.hours) || 0,
         missed_hours: 0, missed: [], hourly: plan.hours ? plan.fee / plan.hours : 0, deduction: 0,
-        package_hours: Number(plan.hours) || 0, used_hours: usedHours,
+        package_hours: Number(plan.hours) || 0, used_hours: usedHours, extra: ex, extra_hours: sumHours(ex),
         truncated: false, final: true,
       }));
       return;
@@ -79,14 +103,18 @@ export function studentPeriods(student, { plans, schedules, marks, payments }, t
 
     let s = plan.valid_from;
     for (let seq = 1; s <= horizon && (!hardEnd || s <= hardEnd) && seq < 2000; seq++) {
-      const fullEnd = periodEnd(plan.type, s);
+      const calEnd = periodEnd(plan.type, s);
+      const full = generateLessons(openStudent, schedules, s, calEnd); // tam dönem (ayrılış hesaba katılmadan)
+      const fullHours = sumHours(full);
+      const exAll = extraLessons(openStudent, extra_lessons, s, calEnd);
+      const fullEnd = exAll.length ? filledEnd(full, exAll, fullHours, calEnd) : calEnd;
       const truncated = !!hardEnd && fullEnd > hardEnd;
       const e = truncated ? hardEnd : fullEnd;
-      const full = generateLessons(openStudent, schedules, s, fullEnd); // tam dönem (ayrılış hesaba katılmadan)
       const inside = full.filter((l) => l.date <= e);
-      const fullHours = sumHours(full), hours = sumHours(inside);
+      const extra = exAll.filter((l) => l.date <= e);
+      const hours = sumHours(inside), extraHours = sumHours(extra);
       let base = plan.fee;
-      if (truncated) base = fullHours > 0 ? Math.round(plan.fee * hours / fullHours) : 0;
+      if (truncated) base = fullHours > 0 ? Math.min(plan.fee, Math.round(plan.fee * (hours + extraHours) / fullHours)) : 0;
       const hourly = fullHours > 0 ? plan.fee / fullHours : 0;
       const missed = inside.filter((l) => ownMarks.has(l.key)).map((l) => ({ ...l, reason: ownMarks.get(l.key).reason }));
       const missedHours = sumHours(missed);
@@ -95,6 +123,7 @@ export function studentPeriods(student, { plans, schedules, marks, payments }, t
         key: `${plan.id}#${seq}`, plan_id: plan.id, type: plan.type, seq,
         start: s, end: e, due: e, fee: plan.fee, base, scheduled_hours: hours,
         missed_hours: missedHours, missed, hourly, deduction, truncated, final: e < today,
+        extra, extra_hours: extraHours, shortened: fullEnd < calEnd, cal_end: calEnd,
       }));
       s = addDays(fullEnd, 1);
     }

@@ -40,6 +40,26 @@ export function generateLessons(student, schedules, from, to) {
   return out;
 }
 
+/**
+ * Ek dersler (programda olmayan, fazladan yapılan ders): `extra_lessons` tablosunda tek tek saklanır.
+ * Anahtarları `x|<id>` olduğu için "yapılmadı" işaretleriyle karışmaz. Ödeme dönemini doldurur (billing.js).
+ */
+export function extraLessons(student, extras, from, to) {
+  const r = activeRange(student);
+  const a = from > r.from ? from : r.from;
+  const b = to < r.to ? to : r.to;
+  return (extras || [])
+    .filter((x) => x.student_id === student.id && x.date >= a && x.date <= b)
+    .map((x) => ({ student_id: student.id, date: x.date, time: x.time, hours: Number(x.hours) || 1, key: `x|${x.id}`, extra: true, extra_id: x.id, note: x.note || '' }));
+}
+
+/** Programdaki dersler + ek dersler, tarih/saat sırasıyla */
+export function lessonsFor(student, data, from, to) {
+  return generateLessons(student, data.schedules, from, to)
+    .concat(extraLessons(student, data.extra_lessons, from, to))
+    .sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time));
+}
+
 export function marksMap(marks) {
   const m = new Map();
   for (const k of marks) m.set(lessonKey(k.student_id, k.date, k.time), k);
@@ -81,13 +101,16 @@ export function notHeldReport(students, marks, from, to) {
 export const weekDays = (mondayIso) => Array.from({ length: 7 }, (_, i) => addDays(mondayIso, i));
 
 /** Ders raporu özeti: tarih aralığında öğrenci başına yapılan / yapılmayan / henüz gelmeyen ders sayısı */
-export function lessonSummary(students, schedules, marks, from, to, now) {
+export function lessonSummary(students, data, from, to, now) {
   const rows = students.map((s) => {
-    const ls = decorateLessons(generateLessons(s, schedules, from, to), marks, now);
-    const c = { done: 0, not_held: 0, upcoming: 0 };
-    for (const l of ls) c[l.status === 'not_held' ? 'not_held' : l.status === 'done' ? 'done' : 'upcoming']++;
+    const ls = decorateLessons(lessonsFor(s, data, from, to), data.marks, now);
+    const c = { done: 0, not_held: 0, upcoming: 0, extra: 0 };
+    for (const l of ls) {
+      c[l.status === 'not_held' ? 'not_held' : l.status === 'done' ? 'done' : 'upcoming']++;
+      if (l.extra && l.status === 'done') c.extra++;
+    }
     return { id: s.id, name: s.name, ...c, total: ls.length };
   }).filter((r) => r.total > 0).sort((a, b) => a.name.localeCompare(b.name, 'tr'));
   const sum = (k) => rows.reduce((a, r) => a + r[k], 0);
-  return { rows, done: sum('done'), not_held: sum('not_held'), upcoming: sum('upcoming') };
+  return { rows, done: sum('done'), not_held: sum('not_held'), upcoming: sum('upcoming'), extra: sum('extra') };
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Shell, todayLabel } from '../../app.jsx';
 import { useApp, useAction, Icon, WaButton, Empty } from '../../ui.jsx';
-import { generateLessons, decorateLessons } from '../../core/lessons.js';
+import { lessonsFor, decorateLessons } from '../../core/lessons.js';
 import { isOpen } from '../../core/billing.js';
 import { msgHomeworkDone, msgPaymentLate, msgPackageFull } from '../../core/messages.js';
 import { fmtTL } from '../../core/money.js';
@@ -77,7 +77,7 @@ function Panel({ go }) {
   const byId = useMemo(() => new Map(data.students.map((s) => [s.id, s])), [data.students]);
 
   const todays = useMemo(() => {
-    const ls = data.students.filter((s) => s.active !== false).flatMap((s) => generateLessons(s, data.schedules, now.date, now.date));
+    const ls = data.students.filter((s) => s.active !== false).flatMap((s) => lessonsFor(s, data, now.date, now.date));
     return decorateLessons(ls, data.marks, now).sort((a, b) => a.time.localeCompare(b.time));
   }, [data, now]);
 

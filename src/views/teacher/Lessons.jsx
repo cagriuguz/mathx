@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'preact/hooks';
 import { useApp, Tabs, Icon, Empty, Field } from '../../ui.jsx';
-import { generateLessons, decorateLessons, notHeldReport, lessonSummary } from '../../core/lessons.js';
+import { lessonsFor, decorateLessons, notHeldReport, lessonSummary } from '../../core/lessons.js';
 import { addDays, weekStart, fmtShort, fmtDate, TR_DAYS, monthKey, monthFirst, monthLast, dow } from '../../core/dates.js';
-import { LessonRow } from '../shared.jsx';
+import { LessonRow, ExtraLessonSheet } from '../shared.jsx';
 
 export function Lessons() {
   const [tab, setTab] = useState('week');
@@ -18,16 +18,20 @@ function Week() {
   const { data, now } = useApp();
   const [monday, setMonday] = useState(weekStart(now.date));
   const [who, setWho] = useState('');
+  const [adding, setAdding] = useState(false);
   const byId = useMemo(() => new Map(data.students.map((s) => [s.id, s])), [data.students]);
   const sunday = addDays(monday, 6);
 
   const lessons = useMemo(() => {
     const ss = data.students.filter((s) => (!who || s.id === who));
-    return decorateLessons(ss.flatMap((s) => generateLessons(s, data.schedules, monday, sunday)), data.marks, now);
+    return decorateLessons(ss.flatMap((s) => lessonsFor(s, data, monday, sunday)), data.marks, now);
   }, [data, monday, who, now]);
 
   const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
   const notHeld = lessons.filter((l) => l.status === 'not_held').length;
+  const extraN = lessons.filter((l) => l.extra).length;
+
+  if (adding) return <ExtraLessonSheet studentId={who} onClose={() => setAdding(false)} />;
 
   return (
     <div class="stack">
@@ -35,7 +39,7 @@ function Week() {
         <button class="btn small" aria-label="Önceki hafta" onClick={() => setMonday(addDays(monday, -7))}><Icon name="back" /></button>
         <div style="text-align:center">
           <div class="num" style="font-size:19px">{fmtShort(monday)} – {fmtShort(sunday)}</div>
-          <div class="small muted">{lessons.length} ders{notHeld ? `, ${notHeld} yapılmadı` : ''}</div>
+          <div class="small muted">{lessons.length} ders{extraN ? ` (${extraN} ek)` : ''}{notHeld ? `, ${notHeld} yapılmadı` : ''}</div>
         </div>
         <button class="btn small" aria-label="Sonraki hafta" onClick={() => setMonday(addDays(monday, 7))}><Icon name="chevron" /></button>
       </div>
@@ -46,6 +50,7 @@ function Week() {
         </select>
         {monday !== weekStart(now.date) && <button class="btn" onClick={() => setMonday(weekStart(now.date))}>Bu hafta</button>}
       </div>
+      {data.students.length > 0 && <button class="btn" onClick={() => setAdding(true)}><Icon name="plus" /> Ek ders ekle</button>}
       <div class="card">
         {lessons.length === 0 ? <Empty title="Bu hafta ders yok">Öğrenci kartından ders günlerini ekleyebilirsiniz.</Empty> : days.map((d) => {
           const ls = lessons.filter((l) => l.date === d);
@@ -78,7 +83,7 @@ function Report() {
     setErr('');
     const ss = data.students.filter((s) => !who || s.id === who);
     setRows(notHeldReport(ss, data.marks, from, to));
-    setSum(lessonSummary(ss, data.schedules, data.marks, from, to, now));
+    setSum(lessonSummary(ss, data, from, to, now));
   };
 
   return (
@@ -104,7 +109,7 @@ function Report() {
             <div class="muted small">{fmtDate(from)} – {fmtDate(to)}</div>
           </div>
           <div class="figures" style="box-shadow:none">
-            <div class="figure"><div class="v">{sum.done}</div><div class="l">Yapıldı</div></div>
+            <div class="figure"><div class="v">{sum.done}</div><div class="l">Yapıldı{sum.extra ? ` (${sum.extra} ek)` : ''}</div></div>
             <div class="figure"><div class="v">{sum.not_held}</div><div class="l">Yapılmadı</div></div>
             <div class="figure"><div class="v">{sum.upcoming}</div><div class="l">Henüz gelmedi</div></div>
           </div>
@@ -112,7 +117,7 @@ function Report() {
             <ul class="list">
               {sum.rows.map((r) => (
                 <li key={r.id} class="spread"><span>{r.name}</span>
-                  <span class="small"><b>{r.done}</b> yapıldı · <b>{r.not_held}</b> yapılmadı{r.upcoming ? ` · ${r.upcoming} gelecek` : ''}</span></li>
+                  <span class="small"><b>{r.done}</b> yapıldı{r.extra ? ` (${r.extra} ek)` : ''} · <b>{r.not_held}</b> yapılmadı{r.upcoming ? ` · ${r.upcoming} gelecek` : ''}</span></li>
               ))}
             </ul>
           )}

@@ -21,7 +21,7 @@ function session(seed) {
   const pick = (a) => a[Math.floor(r() * a.length)];
   const int = (a, b) => a + Math.floor(r() * (b - a + 1));
   const today = addDays('2026-09-26', int(-200, 200));
-  const data = { students: [], schedules: [], plans: [], marks: [], payments: [], expenses: [], expense_payments: [] };
+  const data = { students: [], schedules: [], plans: [], marks: [], payments: [], expenses: [], expense_payments: [], extra_lessons: [] };
   let id = 0;
   const nid = () => `x${++id}`;
   const steps = int(10, 60);
@@ -68,6 +68,25 @@ function session(seed) {
       data.expenses.push({ id: eid, name: `Gider ${eid}`, amount: int(1, 500) * 1000, due_day: int(1, 31), start_month: monthKey(addDays(today, int(-60, 40))), end_month: r() < 0.3 ? monthKey(addDays(today, int(0, 90))) : null, active: r() < 0.9 });
       if (r() < 0.4) data.expense_payments.push({ id: nid(), expense_id: eid, month: monthKey(today), paid_date: addDays(today, int(-20, 0)), amount: int(1, 500) * 1000 });
     }
+    // Ek ders ekle / sil; derslere başlama tarihini kaydır (ilk program ve ücret sürümüyle birlikte)
+    if (data.students.length && r() < 0.18) {
+      const s = pick(data.students);
+      data.extra_lessons.push({ id: nid(), student_id: s.id, date: addDays(today, int(-120, 15)), time: pick(TIMES), hours: pick([1, 1, 1.5, 2]), note: r() < 0.5 ? 'Sınav öncesi' : '' });
+    }
+    if (data.extra_lessons.length && r() < 0.05) data.extra_lessons.splice(int(0, data.extra_lessons.length - 1), 1);
+    if (data.students.length && r() < 0.04) {
+      const s = pick(data.students);
+      const byDate = (a, b) => a.valid_from.localeCompare(b.valid_from);
+      const sch = data.schedules.filter((x) => x.student_id === s.id).sort(byDate);
+      const pl = data.plans.filter((x) => x.student_id === s.id).sort(byDate);
+      const nd = addDays(s.start_date, int(-30, 30));
+      const next = [sch[1], pl[1]].filter(Boolean).map((x) => x.valid_from).sort()[0];
+      if ((!next || nd < next) && (s.active !== false || !s.end_date || nd <= s.end_date)) {
+        if (sch[0].valid_from <= s.start_date) sch[0].valid_from = nd;
+        if (pl[0].valid_from <= s.start_date) pl[0].valid_from = nd;
+        s.start_date = nd;
+      }
+    }
     check(data, today, `seed ${seed} adım ${i}`);
   }
 }
@@ -96,6 +115,14 @@ function check(data, today, where) {
       if (p.status === 'paid') assert.ok(p.remaining === 0, `${at}: ödendi ama kalan var`);
       if (p.status === 'running') assert.ok(today < p.due, `${at}: vadesi geçmiş ama sürüyor`);
       for (const t of [msgPaymentLate(p), msgPackageFull(p)]) assert.ok(!/undefined|NaN/.test(t), `${at}: mesajda boşluk`);
+    }
+    // Ek ders: her ek ders en fazla bir dönemde; ek dersle kısalan dönem tam ders saatine ulaşmış olmalı; ücret artmaz
+    const exSeen = new Set();
+    for (const p of ps) {
+      for (const x of p.extra || []) { assert.ok(!exSeen.has(x.extra_id), `${where}: ek ders iki dönemde`); exSeen.add(x.extra_id); }
+      assert.ok(p.amount <= p.fee || p.type === 'oneoff', `${where}: ek ders ücreti artırdı`);
+      if (p.shortened && !p.truncated && p.hourly > 0) assert.ok(p.scheduled_hours + p.extra_hours >= p.fee / p.hourly - 1e-6, `${where}: dolmadan kısalan dönem`);
+      if (p.shortened) assert.ok(p.end < p.cal_end, `${where}: kısalma işareti yanlış`);
     }
     // Aynı plana ait tekrarlı dönemler çakışmaz ve boşluksuz ilerler
     const byPlan = {};

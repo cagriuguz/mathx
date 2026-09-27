@@ -39,6 +39,7 @@ async function setup() {
     insert into public.homework(id,student_id,given_date,due_date) values ('20000000-0000-0000-0000-00000000000a','${S.A}','2026-09-02','2026-09-09'),('20000000-0000-0000-0000-00000000000b','${S.B}','2026-09-02','2026-09-09');
     insert into public.books(name, student_id) values ('Kitap', null), ('Ali kitabı', '${S.A}');
     insert into public.expenses(name,amount,start_month) values ('Kira',1000,'2026-09');
+    insert into public.extra_lessons(student_id,date,time,hours,note) values ('${S.A}','2026-09-03','10:00',1,'ek'),('${S.B}','2026-09-03','10:00',2,'');
     insert into public.logins(student_id,student_pw,parent_pw) values ('${S.A}','ogr-sifre','veli-sifre'),('${S.B}','o2','v2');
     insert into public.voice_notes(id,student_id,audio,seconds) values ('30000000-0000-0000-0000-00000000000a','${S.A}','data:audio/mp4;base64,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',40),('30000000-0000-0000-0000-00000000000b','${S.B}','data:audio/mp4;base64,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',20);
   `);
@@ -62,7 +63,11 @@ test('güvenlik kuralları (RLS)', async () => {
 
   // VELİ A: yalnızca kendi öğrencisi
   await as(db, U.pA, async () => {
-    for (const t of ['students', 'schedules', 'plans', 'marks', 'payments', 'homework', 'voice_notes']) assert.equal(await count(db, t), 1, `veli ${t}`);
+    for (const t of ['students', 'schedules', 'plans', 'marks', 'payments', 'homework', 'voice_notes', 'extra_lessons']) assert.equal(await count(db, t), 1, `veli ${t}`);
+    // Ek ders: veli yalnız görür; ekleyemez, değiştiremez, silemez
+    assert.equal(await rejects(db.query(`insert into public.extra_lessons(student_id,date,time,hours) values ('${S.A}','2026-09-04','10:00',1)`)), true, 'veli ek ders ekleyemez');
+    await db.query(`update public.extra_lessons set hours = 5`);
+    await db.query(`delete from public.extra_lessons`);
     // Sesli not: veli yalnız kendi öğrencisininkini dinler, yalnız "dinlendi" işaretini koyabilir
     await db.query(`select public.mark_voice_heard('30000000-0000-0000-0000-00000000000a')`);
     assert.equal(await rejects(db.query(`select public.mark_voice_heard('30000000-0000-0000-0000-00000000000b')`)), true, 'veli başka öğrencinin notunu işaretleyemez');
@@ -90,7 +95,7 @@ test('güvenlik kuralları (RLS)', async () => {
   // ÖĞRENCİ A: yalnızca kendi ödevi; ödeme/ders/öğrenci tablosu yok
   await as(db, U.sA, async () => {
     assert.equal(await count(db, 'homework'), 1);
-    for (const t of ['students', 'schedules', 'plans', 'marks', 'payments', 'books', 'expenses', 'settings']) assert.equal(await count(db, t), 0, `öğrenci ${t} görmemeli`);
+    for (const t of ['students', 'schedules', 'plans', 'marks', 'payments', 'books', 'expenses', 'settings', 'extra_lessons']) assert.equal(await count(db, t), 0, `öğrenci ${t} görmemeli`);
     assert.equal(await count(db, 'logins'), 0, 'öğrenci şifre tablosunu (velinin şifresi dahil) göremez');
     assert.equal(await count(db, 'voice_notes'), 0, 'öğrenci veliye bırakılan sesli notu göremez');
     assert.equal(await rejects(db.query(`select public.mark_voice_heard('30000000-0000-0000-0000-00000000000a')`)), true, 'öğrenci notu işaretleyemez');
@@ -140,6 +145,10 @@ test('güvenlik kuralları (RLS)', async () => {
     assert.equal(await count(db, 'payments'), 2);
     assert.equal(await count(db, 'logins'), 2, 'öğretmen şifreleri görür');
     assert.equal(await count(db, 'voice_notes'), 2, 'öğretmen tüm sesli notları görür');
+    assert.equal(await count(db, 'extra_lessons'), 2, 'öğretmen tüm ek dersleri görür; veli değiştirememiş');
+    assert.equal(Number((await db.query(`select sum(hours) as h from public.extra_lessons`)).rows[0].h), 3, 'veli ek ders saatini değiştirememiş');
+    await db.query(`insert into public.extra_lessons(student_id,date,time,hours) values ('${S.A}','2026-09-05','11:00',1.5)`);
+    assert.equal(await rejects(db.query(`insert into public.extra_lessons(student_id,date,time,hours,note) values ('${S.A}','2026-09-05','11:00',1,'${'x'.repeat(51)}')`)), true, 'not 50 karakteri geçemez');
     await db.query(`insert into public.voice_notes(student_id,audio,seconds) values ('${S.A}','data:audio/mp4;base64,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',90)`);
     await db.query(`delete from public.voice_notes where seconds = 90`);
     assert.equal((await db.query(`select parent_pw from public.logins where student_id = '${S.A}'`)).rows[0].parent_pw, 'veli-sifre', 'velinin yazma denemesi etkisiz kalmalı');

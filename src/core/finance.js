@@ -13,7 +13,7 @@
 //   Bu bir nakit planlamasıdır; yatırım tavsiyesi değildir.
 import { addDays, weekStart, monthKey, monthFirst, monthLast, clampDay, addMonths, fmtDots, fmtMonth } from './dates.js';
 import { fmtTL } from './money.js';
-import { generateLessons, marksMap, lessonStatus } from './lessons.js';
+import { lessonsFor, marksMap, lessonStatus } from './lessons.js';
 import { allPeriods, HORIZON_DAYS } from './billing.js';
 
 export const EXPENSE_CATEGORIES = ['Kira', 'Faturalar', 'Ulaşım', 'Kırtasiye / Kitap', 'Reklam', 'Vergi / SGK', 'Diğer'];
@@ -143,7 +143,7 @@ export function rangeEarnings(data, settings, periods, from, to, now) {
         continue;
       }
       const hourly = p.amount / pkg;
-      const lessons = generateLessons(s, data.schedules, p.start, pEnd < to ? pEnd : to);
+      const lessons = lessonsFor(s, data, p.start, pEnd < to ? pEnd : to);
       let before = 0, within = 0, fut = 0;
       for (const l of lessons) {
         const st = lessonStatus(l, mm, now);
@@ -159,7 +159,7 @@ export function rangeEarnings(data, settings, periods, from, to, now) {
       continue;
     }
     const a = p.start > from ? p.start : from, b = pEnd < to ? pEnd : to;
-    for (const l of generateLessons(s, data.schedules, a, b)) {
+    for (const l of lessonsFor(s, data, a, b)) {
       const st = lessonStatus(l, mm, now);
       if (st === 'not_held') { r.not_held++; continue; }
       const v = l.hours * p.hourly;

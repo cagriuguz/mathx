@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'preact/hooks';
 import { Shell } from '../../app.jsx';
 import { useApp, Icon, Empty } from '../../ui.jsx';
-import { generateLessons, decorateLessons } from '../../core/lessons.js';
+import { lessonsFor, decorateLessons } from '../../core/lessons.js';
 import { studentSummary, PAY_METHODS } from '../../core/billing.js';
 import { addDays, fmtDate, fmtShort, TR_DAYS, dow } from '../../core/dates.js';
 import { fmtTL } from '../../core/money.js';
@@ -53,7 +53,7 @@ function ParentHomework() {
 
 function ParentLessons({ s }) {
   const { data, now } = useApp();
-  const lessons = useMemo(() => decorateLessons(generateLessons(s, data.schedules, addDays(now.date, -56), addDays(now.date, 14)), data.marks, now).reverse(), [data, now]);
+  const lessons = useMemo(() => decorateLessons(lessonsFor(s, data, addDays(now.date, -56), addDays(now.date, 14)), data.marks, now).reverse(), [data, now]);
   const past = lessons.filter((l) => l.status === 'done' || l.status === 'not_held');
   const next = lessons.filter((l) => l.status === 'today' || l.status === 'upcoming').reverse();
   const nh = past.filter((l) => l.status === 'not_held');
@@ -67,7 +67,7 @@ function ParentLessons({ s }) {
         <>
           <div class="section-head"><h2 class="section-title">Yaklaşan dersler</h2></div>
           <div class="card"><ul class="list">
-            {next.map((l) => <li key={l.key} class="spread"><span>{TR_DAYS[dow(l.date) - 1]}, {fmtShort(l.date)} · {l.time}</span><span class={`chip ${l.status === 'today' ? 'gold' : 'info'}`}>{l.status === 'today' ? 'Bugün' : 'Planlandı'}</span></li>)}
+            {next.map((l) => <li key={l.key} class="spread"><span>{TR_DAYS[dow(l.date) - 1]}, {fmtShort(l.date)} · {l.time}{l.extra ? ' · Ek ders' : ''}</span><span class={`chip ${l.status === 'today' ? 'gold' : 'info'}`}>{l.status === 'today' ? 'Bugün' : 'Planlandı'}</span></li>)}
           </ul></div>
         </>
       )}
@@ -78,7 +78,7 @@ function ParentLessons({ s }) {
             {past.map((l) => (
               <li key={l.key} class="spread">
                 <div>
-                  <div>{fmtDate(l.date, true)} · {l.time}</div>
+                  <div>{fmtDate(l.date, true)} · {l.time}{l.extra ? ' · Ek ders' : ''}</div>
                   {l.status === 'not_held' && <div class="item-sub">Gerekçe: {l.reason}</div>}
                 </div>
                 <span class={`chip ${l.status === 'done' ? 'ok' : 'bad'}`}>{l.status === 'done' ? 'Yapıldı' : 'Yapılmadı'}</span>

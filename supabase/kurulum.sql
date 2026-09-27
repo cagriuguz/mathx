@@ -149,6 +149,16 @@ create table if not exists public.voice_notes (
 );
 create index if not exists voice_notes_student_idx on public.voice_notes(student_id);
 
+create table if not exists public.extra_lessons (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid not null references public.students(id) on delete cascade,
+  date date not null,
+  time text not null,
+  hours numeric not null default 1 check (hours > 0 and hours <= 12),
+  note text default '' check (char_length(note) <= 50),
+  created_at timestamptz default now()
+);
+
 create table if not exists public.wa_config (
   id text primary key default 'main',
   business_phone text default '',
@@ -265,11 +275,12 @@ alter table public.expense_payments enable row level security;
 alter table public.settings enable row level security;
 alter table public.logins enable row level security;
 alter table public.voice_notes enable row level security;
+alter table public.extra_lessons enable row level security;
 
 do $$ declare t text; begin
   -- Eski kuralları temizle (yeniden çalıştırmada çakışmasın)
   for t in select tablename from pg_tables where schemaname = 'public' and tablename in
-    ('profiles','students','schedules','plans','marks','payments','books','homework','expenses','expense_payments','settings','logins','voice_notes') loop
+    ('profiles','students','schedules','plans','marks','payments','books','homework','expenses','expense_payments','settings','logins','voice_notes','extra_lessons') loop
     execute format('drop policy if exists teacher_all on public.%I', t);
     execute format('drop policy if exists parent_read on public.%I', t);
     execute format('drop policy if exists own_read on public.%I', t);
@@ -285,13 +296,14 @@ create policy parent_read on public.plans     for select to authenticated using 
 create policy parent_read on public.marks     for select to authenticated using (public.my_role() = 'parent' and student_id = public.my_student_id());
 create policy parent_read on public.payments  for select to authenticated using (public.my_role() = 'parent' and student_id = public.my_student_id());
 create policy parent_read on public.voice_notes for select to authenticated using (public.my_role() = 'parent' and student_id = public.my_student_id());
+create policy parent_read on public.extra_lessons for select to authenticated using (public.my_role() = 'parent' and student_id = public.my_student_id());
 -- Ödev: veli ve öğrenci yalnızca kendi öğrencisininkini okur
 create policy parent_read on public.homework  for select to authenticated using (public.my_role() in ('parent','student') and student_id = public.my_student_id());
 
 -- ───────────── Anlık güncelleme (bir telefonda yapılan değişiklik diğerlerinde hemen görünür)
 -- voice_notes BİLEREK yok: ses satırları büyük; veli ekranı açılınca/öne gelince zaten yenilenir.
 do $$ declare t text; begin
-  foreach t in array array['students','schedules','plans','marks','payments','books','homework','expenses','expense_payments','settings','logins'] loop
+  foreach t in array array['students','schedules','plans','marks','payments','books','homework','expenses','expense_payments','settings','logins','extra_lessons'] loop
     begin execute format('alter publication supabase_realtime add table public.%I', t);
     exception when duplicate_object then null; end;
   end loop;

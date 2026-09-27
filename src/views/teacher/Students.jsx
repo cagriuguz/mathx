@@ -8,7 +8,7 @@ import { isValidPhone } from '../../core/messages.js';
 import { cleanUsername, checkUsername, generatePasswordPair } from '../../store/common.js';
 import { SITE_URL } from '../../config.js';
 import { withConn } from '../../store/conn.js';
-import { PeriodBody } from '../shared.jsx';
+import { PeriodBody, ExtraLessonSheet } from '../shared.jsx';
 import { TeacherVoiceNotes } from '../voice.jsx';
 import { PaymentSheet } from './Money.jsx';
 
@@ -339,6 +339,7 @@ function StudentDetail({ id, onClose }) {
 
   if (creds) return <CredentialsSheet title="Yeni şifreler" {...creds} onClose={() => setCreds(null)} />;
   if (mode === 'edit') return <EditSheet s={s} onClose={() => setMode(null)} />;
+  if (mode === 'extra') return <ExtraLessonSheet studentId={s.id} onClose={() => setMode(null)} />;
   if (mode === 'program') return <ProgramSheet s={s} sch={sch} plan={plan} onClose={() => setMode(null)} />;
   if (paying) return <PaymentSheet period={paying} onClose={() => setPaying(null)} />;
 
@@ -360,6 +361,7 @@ function StudentDetail({ id, onClose }) {
         <div class="row wrap">
           <button class="btn small" onClick={() => setMode('edit')}><Icon name="edit" /> Bilgileri düzenle</button>
           <button class="btn small" onClick={() => setMode('program')}><Icon name="calendar" /> Program / ücret değiştir</button>
+          <button class="btn small" onClick={() => setMode('extra')}><Icon name="plus" /> Ek ders ekle</button>
           <button class="btn small" disabled={busy} onClick={resetPw}><Icon name="key" /> Şifreleri yenile</button>
         </div>
 
@@ -391,9 +393,13 @@ function StudentDetail({ id, onClose }) {
 }
 
 function EditSheet({ s, onClose }) {
-  const { store, reload } = useApp();
+  const { data, store, reload } = useApp();
   const [run, busy] = useAction();
-  const [f, setF] = useState({ name: s.name, phone: s.phone, parent_name: s.parent_name, parent_phone: s.parent_phone, note: s.note || '', consent: !!s.consent });
+  const [f, setF] = useState({ name: s.name, phone: s.phone, parent_name: s.parent_name, parent_phone: s.parent_phone, note: s.note || '', consent: !!s.consent, start_date: s.start_date });
+  const byDate = (a, b) => a.valid_from.localeCompare(b.valid_from);
+  const ownSch = data.schedules.filter((x) => x.student_id === s.id).sort(byDate);
+  const ownPlans = data.plans.filter((x) => x.student_id === s.id).sort(byDate);
+  const hasPay = data.payments.some((p) => p.student_id === s.id && !p.deleted_at);
   const [errors, setErrors] = useState({});
   const set = (k) => (e) => { const v = e.currentTarget.type === 'checkbox' ? e.currentTarget.checked : e.currentTarget.value; setF((o) => ({ ...o, [k]: v })); };
   const save = async () => {
@@ -402,9 +408,25 @@ function EditSheet({ s, onClose }) {
     if (!isValidPhone(f.phone)) e.phone = 'Geçerli bir cep telefonu yazın.';
     if (f.parent_name.trim().length < 2) e.parent_name = 'Veli adını yazın.';
     if (!isValidPhone(f.parent_phone)) e.parent_phone = 'Geçerli bir cep telefonu yazın.';
+    const moved = f.start_date !== s.start_date;
+    if (moved) {
+      // İlk program/ücret sürümü başlangıçla birlikte kayar; sonraki bir değişikliği geçemez
+      const next = [ownSch[1], ownPlans[1]].filter(Boolean).map((x) => x.valid_from).sort()[0];
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(f.start_date || '')) e.start_date = 'Tarih seçin.';
+      else if (next && f.start_date >= next) e.start_date = `${fmtDate(next)} tarihinde program/ücret değişikliği var; başlangıç bundan önce olmalı.`;
+      else if (s.active === false && s.end_date && f.start_date > s.end_date) e.start_date = 'Son ders tarihinden sonra olamaz.';
+    }
     setErrors(e);
     if (Object.keys(e).length) return;
-    const ok = await run(async () => { await store.update('students', s.id, { ...f, name: f.name.trim(), parent_name: f.parent_name.trim() }); await reload(); }, 'Kaydedildi');
+    if (moved && hasPay && !confirm('Başlangıç tarihi değişince ödeme dönemlerinin tarihleri de kayar. Alınmış ödemeler sırasıyla (1. dönem, 2. dönem…) yerinde kalır. Devam edilsin mi?')) return;
+    const ok = await run(async () => {
+      await store.update('students', s.id, { ...f, name: f.name.trim(), parent_name: f.parent_name.trim() });
+      if (moved) {
+        if (ownSch[0] && ownSch[0].valid_from <= s.start_date) await store.update('schedules', ownSch[0].id, { valid_from: f.start_date });
+        if (ownPlans[0] && ownPlans[0].valid_from <= s.start_date) await store.update('plans', ownPlans[0].id, { valid_from: f.start_date });
+      }
+      await reload();
+    }, 'Kaydedildi');
     if (ok) onClose();
   };
   return (
@@ -414,6 +436,9 @@ function EditSheet({ s, onClose }) {
         <Field label="Öğrenci telefonu" required error={errors.phone}><input class="input" type="tel" value={f.phone} onInput={set('phone')} /></Field>
         <Field label="Veli adı soyadı" required error={errors.parent_name}><input class="input" value={f.parent_name} onInput={set('parent_name')} /></Field>
         <Field label="Veli telefonu" required error={errors.parent_phone}><input class="input" type="tel" value={f.parent_phone} onInput={set('parent_phone')} /></Field>
+        <Field label="Derslere başlama tarihi" required error={errors.start_date} hint="Değişirse ders takvimi ve ödeme dönemleri yeni tarihten hesaplanır.">
+          <input class="input" type="date" value={f.start_date} onInput={set('start_date')} />
+        </Field>
         <Field label="Not"><input class="input" value={f.note} onInput={set('note')} /></Field>
         <label class="check"><input type="checkbox" checked={f.consent} onChange={set('consent')} /> Veli izni alındı (KVKK)</label>
         <button class="btn primary block" disabled={busy} onClick={save}>Kaydet</button>
