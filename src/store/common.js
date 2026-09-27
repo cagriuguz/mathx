@@ -1,12 +1,12 @@
 // Ortak yardımcılar: kullanıcı adı, şifre üretimi, tablo listesi.
 
-export const TABLES = ['students', 'schedules', 'plans', 'marks', 'payments', 'books', 'homework', 'expenses', 'expense_payments', 'settings', 'logins'];
+export const TABLES = ['students', 'schedules', 'plans', 'marks', 'payments', 'books', 'homework', 'expenses', 'expense_payments', 'settings', 'logins', 'voice_notes'];
 
 // logins = öğrenci/veli şifreleri: YALNIZCA öğretmen görür (aşağıda veli/öğrenci listesinde yok).
 // Rol başına görünen tablolar (Supabase'de bu kural veritabanında RLS ile ayrıca zorunlu tutulur).
 export const ROLE_TABLES = {
   teacher: TABLES,
-  parent: ['students', 'schedules', 'plans', 'marks', 'payments', 'homework'],
+  parent: ['students', 'schedules', 'plans', 'marks', 'payments', 'homework', 'voice_notes'],
   student: ['homework'],
 };
 
@@ -60,3 +60,7 @@ export const DEFAULT_SETTINGS = {
   cash_on_hand: 0,
   wa_mode: 'manual',
 };
+
+// Sesli not: liste yüklenirken ses verisi (audio) GELMEZ; "Dinle"ye basınca ayrıca iner.
+export const VOICE_COLS = 'id, student_id, mime, seconds, created_at, heard_at';
+export const VOICE_MAX_SEC = 90;

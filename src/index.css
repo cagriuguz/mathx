@@ -425,3 +425,10 @@ table.t tr.current td { background: var(--brass-soft); }
 .kcard .error { color: #ffd5cf; background: rgba(176,58,46,.35); border-radius: 10px; padding: 10px 12px; font-size: 14px; line-height: 1.45; }
 .klink { display: block; margin: 16px auto 0; border: 0; background: none; color: rgba(245,246,248,.6); font: inherit; font-size: 13px;
   text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+
+/* Sesli not */
+.voice-live { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; color: var(--madder); }
+.voice-live .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--madder); animation: voicePulse 1s ease-in-out infinite; }
+@keyframes voicePulse { 50% { opacity: .25; } }
+.voice-bar { height: 6px; border-radius: 999px; background: var(--sunk); overflow: hidden; }
+.voice-bar > div { height: 100%; background: var(--madder); transition: width .25s linear; }

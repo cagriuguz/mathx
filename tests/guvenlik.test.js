@@ -40,6 +40,7 @@ async function setup() {
     insert into public.books(name, student_id) values ('Kitap', null), ('Ali kitabı', '${S.A}');
     insert into public.expenses(name,amount,start_month) values ('Kira',1000,'2026-09');
     insert into public.logins(student_id,student_pw,parent_pw) values ('${S.A}','ogr-sifre','veli-sifre'),('${S.B}','o2','v2');
+    insert into public.voice_notes(id,student_id,audio,seconds) values ('30000000-0000-0000-0000-00000000000a','${S.A}','data:audio/mp4;base64,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',40),('30000000-0000-0000-0000-00000000000b','${S.B}','data:audio/mp4;base64,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',20);
   `);
   return db;
 }
@@ -61,7 +62,13 @@ test('güvenlik kuralları (RLS)', async () => {
 
   // VELİ A: yalnızca kendi öğrencisi
   await as(db, U.pA, async () => {
-    for (const t of ['students', 'schedules', 'plans', 'marks', 'payments', 'homework']) assert.equal(await count(db, t), 1, `veli ${t}`);
+    for (const t of ['students', 'schedules', 'plans', 'marks', 'payments', 'homework', 'voice_notes']) assert.equal(await count(db, t), 1, `veli ${t}`);
+    // Sesli not: veli yalnız kendi öğrencisininkini dinler, yalnız "dinlendi" işaretini koyabilir
+    await db.query(`select public.mark_voice_heard('30000000-0000-0000-0000-00000000000a')`);
+    assert.equal(await rejects(db.query(`select public.mark_voice_heard('30000000-0000-0000-0000-00000000000b')`)), true, 'veli başka öğrencinin notunu işaretleyemez');
+    assert.equal(await rejects(db.query(`insert into public.voice_notes(student_id,audio,seconds) values ('${S.A}','data:audio/mp4;base64,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',5)`)), true, 'veli sesli not ekleyemez');
+    await db.query(`update public.voice_notes set seconds = 1`);
+    await db.query(`delete from public.voice_notes`);
     assert.equal((await db.query('select name from public.students')).rows[0].name, 'Ali');
     for (const t of ['books', 'expenses', 'expense_payments', 'settings']) assert.equal(await count(db, t), 0, `veli ${t} görmemeli`);
     assert.equal(await count(db, 'profiles'), 1, 'veli yalnızca kendi profilini görür');
@@ -85,6 +92,8 @@ test('güvenlik kuralları (RLS)', async () => {
     assert.equal(await count(db, 'homework'), 1);
     for (const t of ['students', 'schedules', 'plans', 'marks', 'payments', 'books', 'expenses', 'settings']) assert.equal(await count(db, t), 0, `öğrenci ${t} görmemeli`);
     assert.equal(await count(db, 'logins'), 0, 'öğrenci şifre tablosunu (velinin şifresi dahil) göremez');
+    assert.equal(await count(db, 'voice_notes'), 0, 'öğrenci veliye bırakılan sesli notu göremez');
+    assert.equal(await rejects(db.query(`select public.mark_voice_heard('30000000-0000-0000-0000-00000000000a')`)), true, 'öğrenci notu işaretleyemez');
     await db.query(`select public.set_homework_done('20000000-0000-0000-0000-00000000000a', true)`);
     assert.equal(await rejects(db.query(`select public.set_homework_done('20000000-0000-0000-0000-00000000000b', true)`)), true, 'başka öğrencinin ödevi');
     // "Yaptım" kilidi: öğrenci geri alamaz, ikinci basış işaret tarihini değiştirmez
@@ -113,6 +122,10 @@ test('güvenlik kuralları (RLS)', async () => {
   assert.equal(hw[0].due_date, '2026-09-09', 'öğrenci son tarihi değiştirememeli');
   assert.equal(hw[1].done, false);
   assert.equal((await db.query(`select count(*)::int as n from public.homework where wa_done_at is not null`)).rows[0].n, 0, 'öğrenci otomatik gönderim işaretini değiştiremez');
+  const vn = (await db.query(`select student_id, seconds, heard_at is not null as heard from public.voice_notes order by id`)).rows;
+  assert.deepEqual(vn.map((v) => [v.seconds, v.heard]), [[40, true], [20, false]], 'veli notu silemez/değiştiremez; yalnız kendi notu dinlendi olur');
+  // Sınır: 90 saniyeden uzun not kabul edilmez
+  assert.equal(await rejects(db.query(`insert into public.voice_notes(student_id,audio,seconds) values ('${S.A}','data:audio/mp4;base64,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',91)`)), true, '90 sn sınırı');
 
   // ÖĞRETMEN: her şey
   await as(db, U.teacher, async () => {
@@ -126,6 +139,9 @@ test('güvenlik kuralları (RLS)', async () => {
     assert.equal(await count(db, 'students'), 2);
     assert.equal(await count(db, 'payments'), 2);
     assert.equal(await count(db, 'logins'), 2, 'öğretmen şifreleri görür');
+    assert.equal(await count(db, 'voice_notes'), 2, 'öğretmen tüm sesli notları görür');
+    await db.query(`insert into public.voice_notes(student_id,audio,seconds) values ('${S.A}','data:audio/mp4;base64,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',90)`);
+    await db.query(`delete from public.voice_notes where seconds = 90`);
     assert.equal((await db.query(`select parent_pw from public.logins where student_id = '${S.A}'`)).rows[0].parent_pw, 'veli-sifre', 'velinin yazma denemesi etkisiz kalmalı');
     await db.query(`select public.admin_set_password('ali', 'Yeni-1234')`);
     assert.equal(await rejects(db.query(`select public.admin_set_password('ogretmen', 'x')`)), true, 'öğretmen şifresi bu yolla değişmez');

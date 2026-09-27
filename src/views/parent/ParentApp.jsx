@@ -8,6 +8,7 @@ import { addDays, fmtDate, fmtShort, TR_DAYS, dow } from '../../core/dates.js';
 import { fmtTL } from '../../core/money.js';
 import { PeriodBody, MissedList } from '../shared.jsx';
 import { HomeworkCard } from '../student/StudentApp.jsx';
+import { ParentVoiceNotes } from '../voice.jsx';
 
 const NAV = [
   { key: 'hw', label: 'Ödevler', icon: 'book' },
@@ -21,7 +22,8 @@ export function ParentApp() {
   const s = data.students[0];
   if (!s) return <Shell title="MathX" actions={<button class="iconbtn" onClick={logout} aria-label="Çıkış"><Icon name="logout" /></button>}><div class="card"><Empty title="Kayıt bulunamadı">Öğretmeninize başvurun.</Empty></div></Shell>;
   const late = studentSummary(periods).late.length > 0;
-  const nav = NAV.map((n) => ({ ...n, dot: n.key === 'pay' && late }));
+  const newVoice = (data.voice_notes || []).some((v) => !v.heard_at);
+  const nav = NAV.map((n) => ({ ...n, dot: (n.key === 'pay' && late) || (n.key === 'hw' && newVoice) }));
   return (
     <Shell title={s.name} sub={NAV.find((n) => n.key === tab).label} nav={nav} current={tab} onNav={(k) => { setTab(k); window.scrollTo(0, 0); }}
       actions={<button class="iconbtn" onClick={logout} aria-label="Çıkış"><Icon name="logout" /></button>}>
@@ -35,10 +37,11 @@ export function ParentApp() {
 function ParentHomework() {
   const { data } = useApp();
   const list = [...data.homework].sort((a, b) => Number(a.done) - Number(b.done) || b.given_date.localeCompare(a.given_date));
-  if (!list.length) return <div class="card"><Empty title="Henüz ödev yok" /></div>;
+  if (!list.length) return <div class="stack"><ParentVoiceNotes /><div class="card"><Empty title="Henüz ödev yok" /></div></div>;
   const open = list.filter((h) => !h.done).length;
   return (
     <div class="stack">
+      <ParentVoiceNotes />
       <div class="card figures">
         <div class="figure"><div class="v" style="color:var(--madder)">{open}</div><div class="l">Yapılacak</div></div>
         <div class="figure"><div class="v" style="color:var(--sage)">{list.length - open}</div><div class="l">Yapıldı</div></div>

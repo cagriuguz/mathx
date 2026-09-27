@@ -9,6 +9,7 @@ import { cleanUsername, checkUsername, generatePasswordPair } from '../../store/
 import { SITE_URL } from '../../config.js';
 import { withConn } from '../../store/conn.js';
 import { PeriodBody } from '../shared.jsx';
+import { TeacherVoiceNotes } from '../voice.jsx';
 import { PaymentSheet } from './Money.jsx';
 
 const FEE_LABEL = { weekly: 'Haftalık ücret (TL)', '4weekly': '4 haftalık ücret (TL)', monthly: 'Aylık ücret (TL)', oneoff: 'Paket tutarı (TL)' };
@@ -361,6 +362,8 @@ function StudentDetail({ id, onClose }) {
           <button class="btn small" onClick={() => setMode('program')}><Icon name="calendar" /> Program / ücret değiştir</button>
           <button class="btn small" disabled={busy} onClick={resetPw}><Icon name="key" /> Şifreleri yenile</button>
         </div>
+
+        <TeacherVoiceNotes s={s} />
 
         <section>
           <div class="section-head"><h3 class="section-title">Ödeme dönemleri</h3></div>

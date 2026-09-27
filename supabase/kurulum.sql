@@ -136,6 +136,19 @@ create table if not exists public.logins (
   updated_at timestamptz default now()
 );
 
+-- Öğretmenin veliye bıraktığı SESLİ NOTLAR (isteğe bağlı, en fazla 90 sn). Ses base64 metin olarak durur;
+-- liste yüklenirken ses gönderilmez, veli "Dinle"ye basınca iner. Veli yalnız kendi öğrencisininkini dinler.
+create table if not exists public.voice_notes (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid not null references public.students(id) on delete cascade,
+  audio text not null check (char_length(audio) between 100 and 3000000),
+  mime text not null default 'audio/mp4',
+  seconds int not null check (seconds between 1 and 90),
+  created_at timestamptz default now(),
+  heard_at timestamptz
+);
+create index if not exists voice_notes_student_idx on public.voice_notes(student_id);
+
 create table if not exists public.wa_config (
   id text primary key default 'main',
   business_phone text default '',
@@ -224,6 +237,14 @@ end $$;
 create or replace function public.my_student_name() returns text language sql stable security definer set search_path = public as
 $$ select name from public.students where id = public.my_student_id() $$;
 
+-- Veli sesli notu dinleyince "dinlendi" işareti (yalnız kendi öğrencisininki; başka alan değişmez)
+create or replace function public.mark_voice_heard(p_id uuid) returns void language plpgsql security definer set search_path = public as
+$$ begin
+  if coalesce(public.my_role(), '') <> 'parent' or not exists(select 1 from public.voice_notes where id = p_id and student_id = public.my_student_id()) then
+    raise exception 'Bu nota erişiminiz yok'; end if;
+  update public.voice_notes set heard_at = now() where id = p_id and heard_at is null;
+end $$;
+
 revoke all on function public.admin_set_password(text, text) from anon;
 revoke all on function public.delete_accounts_for(uuid) from anon;
 revoke all on function public.set_wa_config(text, text, text) from anon;
@@ -243,11 +264,12 @@ alter table public.expenses enable row level security;
 alter table public.expense_payments enable row level security;
 alter table public.settings enable row level security;
 alter table public.logins enable row level security;
+alter table public.voice_notes enable row level security;
 
 do $$ declare t text; begin
   -- Eski kuralları temizle (yeniden çalıştırmada çakışmasın)
   for t in select tablename from pg_tables where schemaname = 'public' and tablename in
-    ('profiles','students','schedules','plans','marks','payments','books','homework','expenses','expense_payments','settings','logins') loop
+    ('profiles','students','schedules','plans','marks','payments','books','homework','expenses','expense_payments','settings','logins','voice_notes') loop
     execute format('drop policy if exists teacher_all on public.%I', t);
     execute format('drop policy if exists parent_read on public.%I', t);
     execute format('drop policy if exists own_read on public.%I', t);
@@ -262,10 +284,12 @@ create policy parent_read on public.schedules for select to authenticated using 
 create policy parent_read on public.plans     for select to authenticated using (public.my_role() = 'parent' and student_id = public.my_student_id());
 create policy parent_read on public.marks     for select to authenticated using (public.my_role() = 'parent' and student_id = public.my_student_id());
 create policy parent_read on public.payments  for select to authenticated using (public.my_role() = 'parent' and student_id = public.my_student_id());
+create policy parent_read on public.voice_notes for select to authenticated using (public.my_role() = 'parent' and student_id = public.my_student_id());
 -- Ödev: veli ve öğrenci yalnızca kendi öğrencisininkini okur
 create policy parent_read on public.homework  for select to authenticated using (public.my_role() in ('parent','student') and student_id = public.my_student_id());
 
 -- ───────────── Anlık güncelleme (bir telefonda yapılan değişiklik diğerlerinde hemen görünür)
+-- voice_notes BİLEREK yok: ses satırları büyük; veli ekranı açılınca/öne gelince zaten yenilenir.
 do $$ declare t text; begin
   foreach t in array array['students','schedules','plans','marks','payments','books','homework','expenses','expense_payments','settings','logins'] loop
     begin execute format('alter publication supabase_realtime add table public.%I', t);

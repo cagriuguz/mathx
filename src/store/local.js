@@ -84,16 +84,30 @@ export function createLocalStore() {
       if (!s) return null;
       const out = {};
       for (const t of TABLES) {
-        let rows = ROLE_TABLES[s.role].includes(t) ? db[t] : [];
+        let rows = ROLE_TABLES[s.role].includes(t) ? db[t] || [] : [];
         if (s.role !== 'teacher') rows = rows.filter((r) => (t === 'students' ? r.id : r.student_id) === s.student_id);
-        out[t] = structuredClone(rows);
+        out[t] = structuredClone(t === 'voice_notes' ? rows.map(({ audio, ...r }) => r) : rows);
       }
       if (s.role === 'student') out.me = { name: db.students.find((x) => x.id === s.student_id)?.name || '' };
       return out;
     },
     async insert(table, row) {
-      const r = { id: uid(), ...row };
-      db[table].push(r); write(db); return r;
+      const r = { id: uid(), created_at: new Date().toISOString(), ...row };
+      (db[table] ||= []).push(r); write(db);
+      if (table === 'voice_notes') { const { audio, ...rest } = r; return rest; }
+      return r;
+    },
+    async voiceAudio(id) {
+      const v = (db.voice_notes || []).find((x) => x.id === id);
+      const s = session();
+      if (!v || (s.role !== 'teacher' && (s.role !== 'parent' || v.student_id !== s.student_id))) throw new Error('Bu nota erişiminiz yok.');
+      return v.audio;
+    },
+    async markVoiceHeard(id) {
+      const v = (db.voice_notes || []).find((x) => x.id === id);
+      const s = session();
+      if (!v || s.role !== 'parent' || v.student_id !== s.student_id) throw new Error('Bu nota erişiminiz yok.');
+      if (!v.heard_at) { v.heard_at = new Date().toISOString(); write(db); }
     },
     async update(table, id, patch) {
       const r = db[table].find((x) => x.id === id);
@@ -101,7 +115,7 @@ export function createLocalStore() {
       Object.assign(r, patch); write(db); return r;
     },
     async remove(table, id) {
-      db[table] = db[table].filter((x) => x.id !== id); write(db);
+      db[table] = (db[table] || []).filter((x) => x.id !== id); write(db);
     },
     async upsertSettings(patch) {
       db.settings[0] = { ...db.settings[0], ...patch }; write(db); return db.settings[0];
