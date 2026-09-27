@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateLessons, decorateLessons, cleanReason, notHeldReport, lessonSummary, lessonsFor } from '../src/core/lessons.js';
-import { studentPeriods, packageFull } from '../src/core/billing.js';
+import { studentPeriods, packageFull, studentLedger } from '../src/core/billing.js';
 import { ablative, locative, msgHomeworkGiven, isIOS, waHref, msgHomeworkDone, msgPaymentLate, msgPackageFull, msgPaymentReceived, normalizePhone, waLink } from '../src/core/messages.js';
 import { parseTL, fmtTL } from '../src/core/money.js';
 import { dow, addMonths } from '../src/core/dates.js';
@@ -340,3 +340,27 @@ test('ek ders: aylık pakette ve tek ödeme paketinde', () => {
 });
 
 const addDays1 = (iso) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10); };
+
+test('öğrenci ders defteri: dönem dönem yapılan/yapılmayan/kalan, son ödemeden sonra', () => {
+  const plans = [{ id: 'p', student_id: 's1', type: 'weekly', fee: 100000, valid_from: '2026-09-01' }];
+  const marks = [{ id: 'm', student_id: 's1', date: '2026-09-04', time: '18:00', reason: 'Hastaydı' }];
+  const payments = [{ id: 'y', student_id: 's1', period_key: 'p#1', amount: 50000, paid_date: '2026-09-07' }];
+  const extra_lessons = [{ id: 'e1', student_id: 's1', date: '2026-09-09', time: '10:00', hours: 1, note: '' }];
+  const now = { date: '2026-09-16', time: '12:00' };
+  const data = { students: [ali], ...base({ plans, marks, payments, extra_lessons }) };
+  const led = studentLedger(ali, data, studentPeriods(ali, data, now.date), now);
+  assert.deepEqual(led.rows.map((r) => r.period.key), ['p#3', 'p#2', 'p#1']); // başlamamış dönem yok, en yeni başta
+  const [r3, r2, r1] = led.rows;
+  // 9 Eylül ek dersi 2. dönemi doldurur (8-10 Eyl), 3. dönem 11-17 Eyl
+  assert.deepEqual([r2.period.start, r2.period.end, r2.done, r2.extra], ['2026-09-08', '2026-09-10', 2, 1]);
+  assert.deepEqual([r3.period.start, r3.done, r3.upcoming, r3.not_held], ['2026-09-11', 2, 0, 0]);
+  assert.deepEqual([r1.done, r1.not_held, r1.paid_on, r1.period.status], [1, 1, '2026-09-07', 'paid']);
+  assert.equal(led.done_since, 4); // 8, 9 (ek), 11, 15 Eylül
+  assert.deepEqual([led.done, led.not_held], [5, 1]);
+  const none = studentLedger(ali, { ...data, payments: [] }, studentPeriods(ali, { ...data, payments: [] }, now.date), now);
+  assert.equal(none.last_payment, null);
+  assert.equal(none.rows[2].paid_on, null);
+  // ödeme silinirse sayılmaz
+  const del = { ...data, payments: [{ ...payments[0], deleted_at: '2026-09-10' }] };
+  assert.equal(studentLedger(ali, del, studentPeriods(ali, del, now.date), now).last_payment, null);
+});

@@ -2,7 +2,7 @@
 // her adımdan sonra hesap kurallarının bozulmadığını denetler.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { allPeriods, studentPeriods, isOpen } from '../src/core/billing.js';
+import { allPeriods, studentPeriods, isOpen, studentLedger } from '../src/core/billing.js';
 import { generateLessons, decorateLessons, notHeldReport } from '../src/core/lessons.js';
 import { incomeWeeks, monthView, yearSummary, paymentGroups, rangeEarnings, incomeForecast, monthsOutlook, expenseList } from '../src/core/finance.js';
 import { msgHomeworkGiven, msgHomeworkDone, msgPaymentLate, msgPackageFull } from '../src/core/messages.js';
@@ -132,6 +132,16 @@ function check(data, today, where) {
     }
     // Öğrencinin tekil dönem hesabı, toplu hesapla aynı
     assert.deepEqual(studentPeriods(s, data, today).map((p) => p.amount), ps.map((p) => p.amount), `${where}: tekil/toplu farkı`);
+    // Öğrenci ders defteri (Dersler → Öğrenci): sayılar dönem hesabıyla tutarlı
+    const led = studentLedger(s, data, ps, { date: today, time: '12:00' });
+    for (const r of led.rows) {
+      assert.ok(r.period.start <= today, `${where}: başlamamış dönem defterde`);
+      assert.equal(r.done + r.not_held + r.upcoming, r.total, `${where}: defter sayıları toplamı`);
+      assert.ok(r.lessons.every((l) => l.status !== 'done' || l.date <= today), `${where}: defterde gelecek ders yapıldı`);
+      if (r.period.type !== 'oneoff') assert.equal(r.not_held, r.period.missed.length, `${where}: defter/dönem yapılmayan farkı`);
+      if (r.period.status === 'paid' && r.period.amount > 0) assert.ok(r.paid_on, `${where}: ödenen dönemde ödeme günü yok`);
+    }
+    assert.equal(led.done, led.rows.reduce((a, r) => a + r.done, 0), `${where}: defter toplamı`);
   }
   const ls = decorateLessons(data.students.flatMap((s) => generateLessons(s, data.schedules, addDays(today, -30), addDays(today, 7))), data.marks, { date: today, time: '12:00' });
   for (const l of ls) {

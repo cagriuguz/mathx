@@ -14,7 +14,7 @@
 // Tek Ödeme paketinde ek ders kullanılan saate eklenir. Ek ders ayrıca ücretlendirilmez.
 // Vade = dönemin son günü. Hatırlatma, vadeden N gün SONRA verilir (aylık 3, 4 haftalık 5; Ayarlar'dan değişir).
 import { addDays, addMonths, diffDays } from './dates.js';
-import { generateLessons, extraLessons, marksMap, lessonKey } from './lessons.js';
+import { generateLessons, extraLessons, marksMap, lessonKey, lessonsFor, decorateLessons } from './lessons.js';
 
 export const PLAN_TYPES = {
   weekly: 'Haftalık',
@@ -171,3 +171,31 @@ export function studentSummary(periods) {
 export const packageFull = (p) => p.type === 'oneoff' && p.package_hours > 0 && p.used_hours >= p.package_hours;
 
 export { lessonKey };
+
+/**
+ * Öğrenci ders defteri (Dersler → Öğrenci): tarih aralığı seçmeden, ödeme dönemi dönemi kaç ders yapıldı / yapılmadı / kaldı.
+ * periods: studentPeriods çıktısı. Başlamamış dönemler gösterilmez. En yeni dönem başta.
+ * last_payment: silinmemiş en son ödeme; done_since: o ödemenin gününden SONRA yapılan ders sayısı.
+ */
+export function studentLedger(student, data, periods, now) {
+  const pays = data.payments.filter((p) => p.student_id === student.id && !p.deleted_at);
+  const rows = periods.filter((p) => p.status !== 'future' && p.start <= now.date).map((p) => {
+    const to = p.end || (now.date > p.start ? now.date : p.start);
+    const ls = decorateLessons(lessonsFor(student, data, p.start, to), data.marks, now);
+    const c = { done: 0, not_held: 0, upcoming: 0, extra: 0 };
+    for (const l of ls) {
+      c[l.status === 'not_held' ? 'not_held' : l.status === 'done' ? 'done' : 'upcoming']++;
+      if (l.extra && l.status === 'done') c.extra++;
+    }
+    const pd = pays.filter((x) => x.period_key === p.key).map((x) => x.paid_date).sort();
+    return { period: p, lessons: ls, ...c, total: ls.length, paid_on: pd.length ? pd[pd.length - 1] : null };
+  }).reverse();
+  const last = [...pays].sort((a, b) => (a.paid_date + (a.created_at || '')).localeCompare(b.paid_date + (b.created_at || ''))).pop() || null;
+  let doneSince = 0;
+  if (last) {
+    const ls = decorateLessons(lessonsFor(student, data, addDays(last.paid_date, 1), now.date), data.marks, now);
+    doneSince = ls.filter((l) => l.status === 'done').length;
+  }
+  const all = rows.reduce((a, r) => ({ done: a.done + r.done, not_held: a.not_held + r.not_held }), { done: 0, not_held: 0 });
+  return { rows, last_payment: last, done_since: doneSince, ...all };
+}

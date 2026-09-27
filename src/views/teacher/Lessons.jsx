@@ -3,13 +3,15 @@ import { useApp, Tabs, Icon, Empty, Field } from '../../ui.jsx';
 import { lessonsFor, decorateLessons, notHeldReport, lessonSummary } from '../../core/lessons.js';
 import { addDays, weekStart, fmtShort, fmtDate, TR_DAYS, monthKey, monthFirst, monthLast, dow } from '../../core/dates.js';
 import { LessonRow, ExtraLessonSheet } from '../shared.jsx';
+import { studentPeriods, studentLedger, PLAN_TYPES, STATUS_LABEL } from '../../core/billing.js';
+import { fmtTL, fmtHours } from '../../core/money.js';
 
 export function Lessons() {
   const [tab, setTab] = useState('week');
   return (
     <>
-      <Tabs tabs={[['week', 'Takvim'], ['report', 'Ders Raporu']]} value={tab} onChange={setTab} />
-      {tab === 'week' ? <Week /> : <Report />}
+      <Tabs tabs={[['week', 'Takvim'], ['student', 'Öğrenci'], ['report', 'Ders Raporu']]} value={tab} onChange={setTab} />
+      {tab === 'week' ? <Week /> : tab === 'student' ? <StudentLedger /> : <Report />}
     </>
   );
 }
@@ -142,6 +144,72 @@ function Report() {
           {rows.length > 0 && <div class="card-pad small muted">Toplam {rows.length} ders yapılmadı.</div>}
         </div>
       )}
+    </div>
+  );
+}
+
+const STATUS_CHIP = { paid: 'ok', none: 'info', running: 'info', due: 'warn', late: 'bad' };
+
+/** Tarih aralığı seçmeden tek öğrencinin ödeme dönemi dönemi ders durumu */
+function StudentLedger() {
+  const { data, now, settings } = useApp();
+  const first = (data.students.find((s) => s.active !== false) || data.students[0])?.id || '';
+  const [who, setWho] = useState(first);
+  const [open, setOpen] = useState(0);
+  const s = data.students.find((x) => x.id === who);
+  const led = useMemo(() => (s ? studentLedger(s, data, studentPeriods(s, data, now.date, settings), now) : null), [s, data, now, settings]);
+
+  if (!data.students.length) return <Empty title="Henüz öğrenci yok">Öğrenciler bölümünden ekleyebilirsiniz.</Empty>;
+  return (
+    <div class="stack">
+      <select class="input" value={who} onChange={(e) => { setWho(e.currentTarget.value); setOpen(0); }} aria-label="Öğrenci">
+        {data.students.map((x) => <option key={x.id} value={x.id}>{x.name}{x.active === false ? ' (pasif)' : ''}</option>)}
+      </select>
+      {led && (
+        <div class="card">
+          <div class="figures" style="box-shadow:none">
+            <div class="figure"><div class="v">{led.done}</div><div class="l">Toplam yapılan</div></div>
+            <div class="figure"><div class="v">{led.not_held}</div><div class="l">Yapılmadı</div></div>
+          </div>
+          <div class="card-pad small" style="padding-top:0">
+            {led.last_payment
+              ? <>Son ödeme <b>{fmtDate(led.last_payment.paid_date)}</b> · {fmtTL(led.last_payment.amount)}. O günden sonra <b>{led.done_since}</b> ders yapıldı.</>
+              : 'Henüz ödeme alınmadı.'}
+          </div>
+        </div>
+      )}
+      {led && led.rows.length === 0 && <Empty title="Başlamış ödeme dönemi yok">Öğrenci kartından ders programı ve ücret ekleyin.</Empty>}
+      {led && led.rows.map((r, i) => {
+        const p = r.period;
+        const pkg = p.type === 'oneoff' && p.package_hours > 0;
+        return (
+          <div class="card" key={p.key}>
+            <button class="card-pad" style="display:block;width:100%;text-align:left;background:none;border:0;cursor:pointer;color:inherit;font:inherit" aria-expanded={open === i} onClick={() => setOpen(open === i ? -1 : i)}>
+              <div class="spread">
+                <div class="item-title">{fmtShort(p.start)} – {p.end ? fmtShort(p.end) : 'devam'}</div>
+                <span class={`chip ${STATUS_CHIP[p.status] || ''}`}>{STATUS_LABEL[p.status]}</span>
+              </div>
+              <div>
+                <div class="small muted">{PLAN_TYPES[p.type]} dönem · derslerini görmek için dokunun</div>
+                <div class="small" style="margin-top:4px">
+                  <b>{r.done}</b> ders yapıldı{r.extra ? ` (${r.extra} ek)` : ''}
+                  {r.not_held ? <> · <b>{r.not_held}</b> yapılmadı</> : ''}
+                  {r.upcoming ? <> · <b>{r.upcoming}</b> kaldı</> : ''}
+                  {pkg ? <> · paket {fmtHours(p.used_hours)} / {fmtHours(p.package_hours)}</> : ''}
+                </div>
+                {(r.paid_on || p.remaining > 0) && (
+                  <div class="small muted" style="margin-top:2px">
+                    {p.status === 'paid' ? `Ödeme günü ${fmtDate(r.paid_on)}` : `${fmtTL(p.remaining)} ödenecek`}
+                  </div>
+                )}
+              </div>
+            </button>
+            {open === i && (r.lessons.length === 0
+              ? <div class="card-pad small muted">Bu dönemde ders yok.</div>
+              : <ul class="list">{r.lessons.map((l) => <li key={l.key}><LessonRow lesson={l} name={`${TR_DAYS[dow(l.date) - 1]}, ${fmtShort(l.date)}`} /></li>)}</ul>)}
+          </div>
+        );
+      })}
     </div>
   );
 }
