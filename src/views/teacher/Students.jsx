@@ -214,7 +214,7 @@ function StudentForm({ onClose }) {
     }, 'Öğrenci eklendi');
   };
 
-  if (done) return <CredentialsSheet {...done} onClose={onClose} title="Öğrenci eklendi" />;
+  if (done) return <CredentialsSheet {...done} onClose={onClose} title="Öğrenci eklendi" later />;
 
   return (
     <Sheet title="Yeni öğrenci" onClose={onClose}>
@@ -261,7 +261,7 @@ function StudentForm({ onClose }) {
   );
 }
 
-function CredentialsSheet({ student, pwS, pwP, onClose, title }) {
+function CredentialsSheet({ student, pwS, pwP, onClose, title, onReset, busy, later }) {
   const known = !!(pwS || pwP);
   const msgP = credentialsMessage(student, pwP, 'parent');
   const msgS = credentialsMessage(student, pwS, 'student');
@@ -270,7 +270,8 @@ function CredentialsSheet({ student, pwS, pwP, onClose, title }) {
       <div class="stack">
         <p class="muted" style="margin:0">{known
           ? 'Şifreler yalnızca sizin panelinizde saklanır. Veli öğrencinin, öğrenci velinin şifresini göremez; her birine yalnızca kendi bilgisi gönderilir.'
-          : 'Bu öğrencinin şifreleri, şifre saklama özelliğinden önce oluşturulduğu için kayıtlı değil. "Şifreleri yenile" ile yeni şifre verin; yenileri burada saklanır.'}</p>
+          : 'Bu öğrencinin şifreleri, şifre saklama özelliğinden önce oluşturulduğu için kayıtlı değil. Aşağıdaki düğmeyle yeni şifre verin; yenileri burada saklanır ve gönderebilirsiniz.'}</p>
+        {later && <p class="small" style="margin:0">Şimdi göndermek zorunda değilsiniz. İstediğiniz gün: <b>Öğrenciler → {student.name} → Giriş bilgilerini gönder</b>.</p>}
         <div class="grid2">
           <div class="cred"><div><div class="small muted">Öğrenci · {student.student_username}</div><code>{pwS || '—'}</code></div></div>
           <div class="cred"><div><div class="small muted">Veli · {student.parent_username}</div><code>{pwP || '—'}</code></div></div>
@@ -287,7 +288,8 @@ function CredentialsSheet({ student, pwS, pwP, onClose, title }) {
             <button class="btn" onClick={() => copyText(msgS)}><Icon name="copy" /> Kopyala</button>
           </div>
         </>)}
-        <div><button class="btn ghost" onClick={onClose}>Tamam</button></div>
+        {!known && onReset && <button class="btn primary" disabled={busy} onClick={onReset}><Icon name="key" /> Yeni şifre oluştur ve göster</button>}
+        <div><button class="btn ghost" onClick={onClose}>{later ? 'Sonra gönderirim' : 'Tamam'}</button></div>
       </div>
     </Sheet>
   );
@@ -337,7 +339,7 @@ function StudentDetail({ id, onClose }) {
     run(async () => { await store.deleteAccountsFor(s.id); await store.remove('students', s.id); onClose(); await reload(); }, 'Öğrenci silindi');
   };
 
-  if (creds) return <CredentialsSheet title="Yeni şifreler" {...creds} onClose={() => setCreds(null)} />;
+  if (creds) return <CredentialsSheet title="Yeni şifreler" {...creds} onReset={resetPw} busy={busy} onClose={() => setCreds(null)} />;
   if (mode === 'edit') return <EditSheet s={s} onClose={() => setMode(null)} />;
   if (mode === 'extra') return <ExtraLessonSheet studentId={s.id} onClose={() => setMode(null)} />;
   if (mode === 'program') return <ProgramSheet s={s} sch={sch} plan={plan} onClose={() => setMode(null)} />;
@@ -354,10 +356,10 @@ function StudentDetail({ id, onClose }) {
             <li class="spread"><span class="muted">Ödeme</span><span class="right">{plan ? `${PLAN_TYPES[plan.type]} · ${fmtTL(plan.fee)}` : '—'}</span></li>
             <li class="spread"><span class="muted">Başlangıç</span><span>{fmtDate(s.start_date)}{s.active === false ? ` · bitiş ${fmtDate(s.end_date)}` : ''}</span></li>
             <li class="spread"><span class="muted">Kullanıcı adları</span><span class="right">Öğrenci: {s.student_username}<br />Veli: {s.parent_username}</span></li>
-            <li class="spread"><span class="muted">Şifreler</span><button class="btn small" onClick={showPw}><Icon name="key" /> Şifreleri göster</button></li>
             <li class="spread"><span class="muted">Ödevler</span><span>{hw.filter((h) => h.done).length} / {hw.length} yapıldı</span></li>
           </ul>
         </div>
+        <button class="btn primary" onClick={showPw}><Icon name="key" /> Giriş bilgilerini gönder (veli / öğrenci)</button>
         <div class="row wrap">
           <button class="btn small" onClick={() => setMode('edit')}><Icon name="edit" /> Bilgileri düzenle</button>
           <button class="btn small" onClick={() => setMode('program')}><Icon name="calendar" /> Program / ücret değiştir</button>
