@@ -2,6 +2,8 @@ import { useMemo, useState } from 'preact/hooks';
 import { useApp, useAction, Tabs, Icon, Field, Empty, WaButton } from '../../ui.jsx';
 import { msgHomeworkGiven, msgHomeworkGivenStudent, msgHomeworkDone } from '../../core/messages.js';
 import { addDays, fmtDate, fmtShort } from '../../core/dates.js';
+import { PhotoGallery } from '../photos.jsx';
+import { photoCounts } from '../../core/photos.js';
 import { studentBooks, unassignedBooks, hasBook, bookSuggestions, cleanBookName } from '../../core/books.js';
 
 export function Homework() {
@@ -123,6 +125,7 @@ function Track() {
   const [who, setWho] = useState('');
   const [show, setShow] = useState('open');
   const byId = useMemo(() => new Map(data.students.map((s) => [s.id, s])), [data.students]);
+  const pc = useMemo(() => photoCounts(data.homework_photos), [data.homework_photos]);
   const list = data.homework
     .filter((h) => (!who || h.student_id === who) && byId.has(h.student_id))
     .filter((h) => (show === 'open' ? !h.done : show === 'done' ? h.done : true))
@@ -156,7 +159,10 @@ function Track() {
               <span>Verildi {fmtShort(h.given_date)} · Son gün {fmtDate(h.due_date)}</span>
               <span>{h.sent_given ? 'Veliye gönderildi ✓' : ''}</span>
             </div>
+            {!h.done && !pc.get(h.id) && <div class="hint" style="margin-top:6px">Henüz fotoğraf yüklenmedi</div>}
+            {!h.done && pc.get(h.id) > 0 && <div class="hint" style="margin-top:6px">Öğrenci fotoğraf yüklüyor; henüz "yaptım" demedi</div>}
             <div class="row wrap" style="margin-top:10px">
+              <PhotoGallery h={h} small title={`${s.name} · ödev fotoğrafları`} />
               {h.done
                 ? <WaButton small phone={s.parent_phone} text={msgHomeworkDone(s.name, h.items)} label={h.sent_done ? 'Tekrar gönder' : 'Yapıldı mesajı'} onSent={() => sentDone(h)} />
                 : <WaButton small phone={s.parent_phone} text={msgHomeworkGiven(h.items, h.due_date)} label="Ödevi tekrar gönder" />}

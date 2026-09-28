@@ -1,13 +1,13 @@
 // Ortak yardımcılar: kullanıcı adı, şifre üretimi, tablo listesi.
 
-export const TABLES = ['students', 'schedules', 'plans', 'marks', 'payments', 'books', 'homework', 'expenses', 'expense_payments', 'settings', 'logins', 'voice_notes', 'extra_lessons'];
+export const TABLES = ['students', 'schedules', 'plans', 'marks', 'payments', 'books', 'homework', 'expenses', 'expense_payments', 'settings', 'logins', 'voice_notes', 'extra_lessons', 'homework_photos'];
 
 // logins = öğrenci/veli şifreleri: YALNIZCA öğretmen görür (aşağıda veli/öğrenci listesinde yok).
 // Rol başına görünen tablolar (Supabase'de bu kural veritabanında RLS ile ayrıca zorunlu tutulur).
 export const ROLE_TABLES = {
   teacher: TABLES,
-  parent: ['students', 'schedules', 'plans', 'marks', 'payments', 'homework', 'voice_notes', 'extra_lessons'],
-  student: ['homework'],
+  parent: ['students', 'schedules', 'plans', 'marks', 'payments', 'homework', 'voice_notes', 'extra_lessons', 'homework_photos'],
+  student: ['homework', 'homework_photos'],
 };
 
 const TR = { ç: 'c', ğ: 'g', ı: 'i', ö: 'o', ş: 's', ü: 'u', İ: 'i', Ç: 'c', Ğ: 'g', Ö: 'o', Ş: 's', Ü: 'u' };
@@ -64,3 +64,6 @@ export const DEFAULT_SETTINGS = {
 // Sesli not: liste yüklenirken ses verisi (audio) GELMEZ; "Dinle"ye basınca ayrıca iner.
 export const VOICE_COLS = 'id, student_id, mime, seconds, created_at, heard_at';
 export const VOICE_MAX_SEC = 90;
+
+// Ödev fotoğrafları: liste yüklenirken resimler GELMEZ (yalnız sayı/boyut); ekranda açılınca ayrıca iner.
+export const PHOTO_COLS = 'id, homework_id, student_id, bytes, created_at';

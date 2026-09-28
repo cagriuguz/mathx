@@ -51,10 +51,14 @@ async function as(db, uid, fn) {
   try { return await fn(); } finally { await db.exec(`reset role; select set_config('request.jwt.claim.sub', '', false);`); }
 }
 const count = async (db, t) => (await db.query(`select count(*)::int as n from public.${t}`)).rows[0].n;
+const HW = { A: '20000000-0000-0000-0000-00000000000a', B: '20000000-0000-0000-0000-00000000000b' };
+const IMG = `data:image/jpeg;base64,${'A'.repeat(200)}`;
+let addPhoto;
 const rejects = async (p) => { let ok = false; try { await p; } catch { ok = true; } return ok; };
 
 test('güvenlik kuralları (RLS)', async () => {
   const db = await setup();
+  addPhoto = (hw, sid) => db.query(`insert into public.homework_photos(homework_id, student_id, image, thumb) values ('${hw}', '${sid}', '${IMG}', '${IMG}')`);
 
   // İlk kurulum: öğretmen yokken giriş yapan kişi öğretmen olur, ikinci kez olmaz
   assert.equal((await db.query('select public.teacher_exists() as x')).rows[0].x, false);
@@ -99,7 +103,22 @@ test('güvenlik kuralları (RLS)', async () => {
     assert.equal(await count(db, 'logins'), 0, 'öğrenci şifre tablosunu (velinin şifresi dahil) göremez');
     assert.equal(await count(db, 'voice_notes'), 0, 'öğrenci veliye bırakılan sesli notu göremez');
     assert.equal(await rejects(db.query(`select public.mark_voice_heard('30000000-0000-0000-0000-00000000000a')`)), true, 'öğrenci notu işaretleyemez');
+    // ÖDEV FOTOĞRAFLARI: fotoğrafsız "yaptım" olmaz; yalnız kendi ödevine, en fazla 15
+    assert.equal(await rejects(db.query(`select public.set_homework_done('20000000-0000-0000-0000-00000000000a', true)`)), true, 'fotoğraf yüklenmeden yaptım denemez');
+    assert.equal(await rejects(addPhoto(HW.B, S.B)), true, 'başka öğrencinin ödevine fotoğraf yüklenemez');
+    assert.equal(await rejects(addPhoto(HW.B, S.A)), true, 'başka ödeve kendi adıyla da yüklenemez');
+    for (let i = 0; i < 15; i++) await addPhoto(HW.A, S.A);
+    assert.equal(await rejects(addPhoto(HW.A, S.A)), true, '16. fotoğraf reddedilir');
+    const first = (await db.query(`select id from public.homework_photos order by created_at, id limit 1`)).rows[0].id;
+    await db.query(`delete from public.homework_photos where id = '${first}'`);
+    assert.equal(await count(db, 'homework_photos'), 14, 'öğrenci yaptım demeden önce yanlış fotoğrafı silebilir');
+    await addPhoto(HW.A, S.A);
+    assert.equal(await count(db, 'homework_photos'), 15);
     await db.query(`select public.set_homework_done('20000000-0000-0000-0000-00000000000a', true)`);
+    assert.equal(await rejects(addPhoto(HW.A, S.A)), true, 'yaptım dedikten sonra fotoğraf eklenemez');
+    await db.query(`delete from public.homework_photos`);
+    await db.query(`update public.homework_photos set bytes = 1`);
+    assert.equal(await count(db, 'homework_photos'), 15, 'yaptım dedikten sonra fotoğraf silinemez');
     assert.equal(await rejects(db.query(`select public.set_homework_done('20000000-0000-0000-0000-00000000000b', true)`)), true, 'başka öğrencinin ödevi');
     // "Yaptım" kilidi: öğrenci geri alamaz, ikinci basış işaret tarihini değiştirmez
     const t1 = (await db.query(`select done_at from public.homework`)).rows[0].done_at;
@@ -113,9 +132,24 @@ test('güvenlik kuralları (RLS)', async () => {
     await db.query(`update public.homework set wa_done_at = now()`);
   });
 
+  // Fotoğrafları veli A görür (silemez, ekleyemez); veli B ve oturumsuz göremez
+  await as(db, U.pA, async () => {
+    assert.equal(await count(db, 'homework_photos'), 15, 'veli çocuğunun ödev fotoğraflarını görür');
+    assert.equal(await rejects(addPhoto(HW.A, S.A)), true, 'veli fotoğraf ekleyemez');
+    await db.query(`delete from public.homework_photos`);
+  });
+  await as(db, U.pB, async () => assert.equal(await count(db, 'homework_photos'), 0, 'başka veli göremez'));
+  assert.equal((await db.query(`select count(*)::int n, min(bytes) b from public.homework_photos`)).rows[0].n, 15, 'veli fotoğraf silemedi');
+  assert.equal((await db.query(`select min(bytes)::int b from public.homework_photos`)).rows[0].b, IMG.length, 'boyutu sunucu hesaplar');
+  await as(db, U.teacher, async () => {
+    assert.equal(await count(db, 'homework_photos'), 15, 'öğretmen görür');
+    await db.query(`delete from public.homework_photos where created_at < now() - interval '60 days'`);
+  });
+
   // Oturumsuz (anon) hiçbir şey göremez
   await db.exec(`set role anon;`);
   assert.equal(await rejects(db.query('select * from public.students')), true, 'anon öğrenci okuyamamalı');
+  assert.equal(await rejects(db.query('select * from public.homework_photos')), true, 'anon fotoğraf göremez');
   await db.exec(`reset role;`);
 
   // Sonuçlar: veli/öğrenci hiçbir şeyi bozamadı, yalnızca "yaptım" işareti değişti

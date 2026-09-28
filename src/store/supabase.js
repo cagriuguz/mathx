@@ -2,7 +2,7 @@
 // Güvenlik veritabanındadır (supabase/kurulum.sql içindeki RLS kuralları): veli ve öğrenci
 // yalnızca kendi öğrencisinin satırlarını alabilir; öğrenci ödeme tablolarını hiç okuyamaz.
 import { createClient } from '@supabase/supabase-js';
-import { TABLES, ROLE_TABLES, VOICE_COLS } from './common.js';
+import { TABLES, ROLE_TABLES, VOICE_COLS, PHOTO_COLS } from './common.js';
 
 export const EMAIL_DOMAIN = 'kullanici.mathx.app';
 const toEmail = (username) => `${username}@${EMAIL_DOMAIN}`;
@@ -34,6 +34,9 @@ function fail(error, fallback) {
   if (/already registered|already been registered/i.test(m)) throw new Error('Bu kullanıcı adı zaten kullanılıyor.');
   if (/student_id.*books|books.*student_id/i.test(m)) throw new Error('Öğrenci kitapları için veritabanı güncellemesi gerekiyor: supabase/guncelleme-2026-09-26d-ogrenci-kitaplari.sql dosyasını Supabase SQL Editor\'de bir kez çalıştırın.');
   if (/voice_notes|mark_voice_heard/i.test(m) && /does not exist|schema cache|not find/i.test(m)) throw new Error('Sesli not için veritabanı güncellemesi gerekiyor: supabase/guncelleme-2026-09-27-sesli-not.sql dosyasını Supabase SQL Editor\'de bir kez çalıştırın.');
+  if (/homework_photo/i.test(m) && /does not exist|schema cache|not find/i.test(m)) throw new Error('Ödev fotoğrafları için veritabanı güncellemesi gerekiyor: supabase/guncelleme-2026-09-28b-odev-fotograf.sql dosyasını Supabase SQL Editor\'de bir kez çalıştırın.');
+  if (/fotoğraf|Fotoğraf/.test(m)) throw new Error(m); // veritabanının kendi açıklaması (15 sınırı, fotoğrafsız "yaptım")
+  if (/row-level security/i.test(m) && /homework_photos/i.test(m)) throw new Error('Bu ödeve artık fotoğraf eklenemez (ödev "yapıldı" olarak işaretlenmiş).');
   if (/extra_lessons/i.test(m) && /does not exist|schema cache|not find/i.test(m)) throw new Error('Ek ders için veritabanı güncellemesi gerekiyor: supabase/guncelleme-2026-09-27b-ek-ders.sql dosyasını Supabase SQL Editor\'de bir kez çalıştırın.');
   if (/link_sibling|unlink_sibling|parent_links/i.test(m) && /does not exist|schema cache|not find/i.test(m)) throw new Error('Kardeş (ortak veli) için veritabanı güncellemesi gerekiyor: supabase/guncelleme-2026-09-28-kardes.sql dosyasını Supabase SQL Editor\'de bir kez çalıştırın.');
   if (/Failed to fetch|NetworkError/i.test(m)) throw new Error('İnternet bağlantısı yok. Bağlantıyı kontrol edip tekrar deneyin.');
@@ -86,9 +89,9 @@ export function createSupabaseStore({ url, anonKey }) {
       const out = {};
       await Promise.all(TABLES.map(async (t) => {
         if (!ROLE_TABLES[profile.role].includes(t)) { out[t] = []; return; }
-        const { data, error } = await sb.from(t).select(t === 'voice_notes' ? VOICE_COLS : '*');
-        // Şifre / sesli not tablosu henüz kurulmamışsa (güncelleme SQL'i çalışmadan önce) program yine açılsın
-        if (error && (t === 'logins' || t === 'voice_notes' || t === 'extra_lessons')) { out[t] = []; return; }
+        const { data, error } = await sb.from(t).select(t === 'voice_notes' ? VOICE_COLS : t === 'homework_photos' ? PHOTO_COLS : '*');
+        // Şifre / sesli not / fotoğraf tablosu henüz kurulmamışsa (güncelleme SQL'i çalışmadan önce) program yine açılsın
+        if (error && (t === 'logins' || t === 'voice_notes' || t === 'extra_lessons' || t === 'homework_photos')) { out[t] = []; return; }
         fail(error, `${t} okunamadı`);
         out[t] = data || [];
       }));
@@ -106,6 +109,32 @@ export function createSupabaseStore({ url, anonKey }) {
     async markVoiceHeard(id) {
       const { error } = await sb.rpc('mark_voice_heard', { p_id: id });
       fail(error);
+    },
+    // ── Ödev fotoğrafları
+    async addPhoto(h, { image, thumb }) {
+      const { data, error } = await sb.from('homework_photos').insert({ homework_id: h.id, student_id: h.student_id, image, thumb }).select(PHOTO_COLS).single();
+      fail(error, 'Fotoğraf yüklenemedi');
+      return data;
+    },
+    async removePhoto(id) {
+      const { data, error } = await sb.from('homework_photos').delete().eq('id', id).select('id');
+      fail(error, 'Fotoğraf silinemedi');
+      if (!data?.length) throw new Error('Bu fotoğraf silinemez (ödev "yapıldı" olarak işaretlenmiş).');
+    },
+    async photoThumbs(homeworkId) {
+      const { data, error } = await sb.from('homework_photos').select('id, thumb, created_at').eq('homework_id', homeworkId).order('created_at');
+      fail(error, 'Fotoğraflar yüklenemedi');
+      return data || [];
+    },
+    async photoImage(id) {
+      const { data, error } = await sb.from('homework_photos').select('image').eq('id', id).single();
+      fail(error, 'Fotoğraf yüklenemedi');
+      return data.image;
+    },
+    async removePhotosBefore(iso) {
+      const { data, error } = await sb.from('homework_photos').delete().lt('created_at', iso).select('id');
+      fail(error, 'Fotoğraflar silinemedi');
+      return data?.length || 0;
     },
     async insert(table, row) {
       const { data, error } = await sb.from(table).insert(row).select(table === 'voice_notes' ? VOICE_COLS : '*').single();

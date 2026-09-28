@@ -13,6 +13,7 @@ import { Students } from './Students.jsx';
 import { Homework } from './Homework.jsx';
 import { Money, PaymentSheet } from './Money.jsx';
 import { Settings } from './Settings.jsx';
+import { PhotoGallery } from '../photos.jsx';
 
 const NAV = [
   { key: 'panel', label: 'Panel', icon: 'home', title: 'Günaydın' },
@@ -123,6 +124,7 @@ function Panel({ go }) {
                     <div class="spread"><span class="item-title">{s.name}</span><span class="chip ok">Ödevini yaptı</span></div>
                     <div class="msg">{text}</div>
                     <div class="row wrap">
+                      <PhotoGallery h={h} small title={`${s.name} · ödev fotoğrafları`} />
                       {h.wa_done_at
                         ? <span class="chip ok">Size ve veliye otomatik gönderildi ✓</span>
                         : <WaButton small phone={s.parent_phone} text={text} label="Veliye gönder" onSent={() => markSeen(h, true)} />}
