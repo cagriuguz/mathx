@@ -432,3 +432,8 @@ table.t tr.current td { background: var(--brass-soft); }
 @keyframes voicePulse { 50% { opacity: .25; } }
 .voice-bar { height: 6px; border-radius: 999px; background: var(--sunk); overflow: hidden; }
 .voice-bar > div { height: 100%; background: var(--madder); transition: width .25s linear; }
+
+/* Veli: kardeşler arasında geçiş (tek veli hesabı, birden çok çocuk) */
+.seg.kids { margin-bottom: 14px; }
+.seg.kids button { position: relative; font-size: 15px; padding: 11px 6px; }
+.seg.kids .dot { position: absolute; top: 6px; right: 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--madder); }

@@ -20,6 +20,15 @@
       ],
       "port": 5181,
       "autoPort": true
+    },
+    {
+      "name": "mathx-sahte",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "VITE_SUPABASE_URL=http://localhost:54321 VITE_SUPABASE_ANON_KEY=yerel npx vite --port 5174 --strictPort"
+      ],
+      "port": 5174
     }
   ]
 }

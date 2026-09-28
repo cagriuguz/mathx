@@ -1,7 +1,7 @@
 // VELİ: yalnızca kendi öğrencisinin ödevleri, dersleri ve ödemeleri (veritabanı başka öğrenciyi hiç göndermez).
 import { useMemo, useState } from 'preact/hooks';
 import { Shell } from '../../app.jsx';
-import { useApp, Icon, Empty } from '../../ui.jsx';
+import { useApp, AppCtx, Icon, Empty } from '../../ui.jsx';
 import { lessonsFor, decorateLessons } from '../../core/lessons.js';
 import { studentSummary, PAY_METHODS } from '../../core/billing.js';
 import { addDays, fmtDate, fmtShort, TR_DAYS, dow } from '../../core/dates.js';
@@ -16,20 +16,52 @@ const NAV = [
   { key: 'pay', label: 'Ödemeler', icon: 'wallet' },
 ];
 
+const KID_KEY = 'mathx.veli.cocuk';
+const readKid = () => { try { return localStorage.getItem(KID_KEY); } catch { return null; } };
+
+// Kardeşler: tek veli hesabı birden çok çocuğu görür; ekranın üstünden çocuk seçilir.
+// Seçilen çocuğun verisi ayrı süzülür (her çocuğun dersi, ödevi, ödemesi ayrı kalır).
 export function ParentApp() {
-  const { data, logout, periods } = useApp();
+  const app = useApp();
+  const { data, logout, periods } = app;
   const [tab, setTab] = useState('hw');
-  const s = data.students[0];
-  if (!s) return <Shell title="MathX" actions={<button class="iconbtn" onClick={logout} aria-label="Çıkış"><Icon name="logout" /></button>}><div class="card"><Empty title="Kayıt bulunamadı">Öğretmeninize başvurun.</Empty></div></Shell>;
+  const [kidId, setKidId] = useState(readKid);
+  const kids = [...data.students].sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+  const s = kids.find((k) => k.id === kidId) || kids[0];
+  const kidCtx = useMemo(() => {
+    if (!s) return app;
+    const only = {};
+    for (const [k, v] of Object.entries(data)) {
+      only[k] = !Array.isArray(v) ? v : k === 'students' ? [s] : v.filter((r) => !r || !('student_id' in r) || r.student_id === s.id);
+    }
+    return { ...app, data: only, periods: periods.filter((p) => p.student_id === s.id) };
+  }, [app, data, periods, s]);
+  const logoutBtn = <button class="iconbtn" onClick={logout} aria-label="Çıkış"><Icon name="logout" /></button>;
+  if (!s) return <Shell title="MathX" actions={logoutBtn}><div class="card"><Empty title="Kayıt bulunamadı">Öğretmeninize başvurun.</Empty></div></Shell>;
+  const pick = (id) => { setKidId(id); try { localStorage.setItem(KID_KEY, id); } catch { /* gizli sekme */ } };
+  // Menüdeki nokta: HERHANGİ bir çocukta gecikme / dinlenmemiş not varsa
   const late = studentSummary(periods).late.length > 0;
   const newVoice = (data.voice_notes || []).some((v) => !v.heard_at);
   const nav = NAV.map((n) => ({ ...n, dot: (n.key === 'pay' && late) || (n.key === 'hw' && newVoice) }));
+  const kidDot = (k) => (data.voice_notes || []).some((v) => v.student_id === k.id && !v.heard_at)
+    || studentSummary(periods.filter((p) => p.student_id === k.id)).late.length > 0;
   return (
     <Shell title={s.name} sub={NAV.find((n) => n.key === tab).label} nav={nav} current={tab} onNav={(k) => { setTab(k); window.scrollTo(0, 0); }}
-      actions={<button class="iconbtn" onClick={logout} aria-label="Çıkış"><Icon name="logout" /></button>}>
-      {tab === 'hw' && <ParentHomework />}
-      {tab === 'lessons' && <ParentLessons s={s} />}
-      {tab === 'pay' && <ParentPayments />}
+      actions={logoutBtn}>
+      <AppCtx.Provider value={kidCtx}>
+        {kids.length > 1 && (
+          <div class="seg kids" role="tablist" aria-label="Çocuğunuz">
+            {kids.map((k) => (
+              <button type="button" key={k.id} role="tab" aria-pressed={k.id === s.id} onClick={() => pick(k.id)}>
+                {k.name.split(' ')[0]}{kidDot(k) && k.id !== s.id && <span class="dot" aria-label="yeni" />}
+              </button>
+            ))}
+          </div>
+        )}
+        {tab === 'hw' && <ParentHomework key={s.id} />}
+        {tab === 'lessons' && <ParentLessons key={s.id} s={s} />}
+        {tab === 'pay' && <ParentPayments key={s.id} />}
+      </AppCtx.Provider>
     </Shell>
   );
 }

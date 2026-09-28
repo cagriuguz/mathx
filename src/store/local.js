@@ -62,6 +62,18 @@ export function createLocalStore() {
   chan?.addEventListener('message', () => { db = read(); listeners.forEach((f) => f()); });
 
   const session = () => { try { return JSON.parse(localStorage.getItem(SESSION)); } catch { return null; } };
+  // Veli: kendi öğrencisi + bağlı kardeşleri (acc.links); öğrenci: yalnız kendisi
+  const kidsOf = (acc) => [acc.student_id, ...(acc.role === 'parent' ? acc.links || [] : [])].filter(Boolean);
+  const myIds = (s) => { const acc = db.accounts.find((a) => a.id === s.user_id); return acc ? kidsOf(acc) : [s.student_id]; };
+  const parentsOf = (sid) => db.accounts.filter((a) => a.role === 'parent' && kidsOf(a).includes(sid));
+  // Hesabın ilk öğrencisi silinir/ayrılırsa sıradaki kardeş ilk öğrenci olur; çocuğu kalmazsa false
+  const dropKid = (acc, sid) => {
+    acc.links = (acc.links || []).filter((x) => x !== sid);
+    if (acc.student_id !== sid) return true;
+    if (!acc.links.length) return false;
+    acc.student_id = acc.links.shift();
+    return true;
+  };
 
   const store = {
     mode: 'demo',
@@ -83,9 +95,10 @@ export function createLocalStore() {
       const s = session();
       if (!s) return null;
       const out = {};
+      const ids = new Set(myIds(s));
       for (const t of TABLES) {
         let rows = ROLE_TABLES[s.role].includes(t) ? db[t] || [] : [];
-        if (s.role !== 'teacher') rows = rows.filter((r) => (t === 'students' ? r.id : r.student_id) === s.student_id);
+        if (s.role !== 'teacher') rows = rows.filter((r) => ids.has(t === 'students' ? r.id : r.student_id));
         out[t] = structuredClone(t === 'voice_notes' ? rows.map(({ audio, ...r }) => r) : rows);
       }
       if (s.role === 'student') out.me = { name: db.students.find((x) => x.id === s.student_id)?.name || '' };
@@ -100,13 +113,13 @@ export function createLocalStore() {
     async voiceAudio(id) {
       const v = (db.voice_notes || []).find((x) => x.id === id);
       const s = session();
-      if (!v || (s.role !== 'teacher' && (s.role !== 'parent' || v.student_id !== s.student_id))) throw new Error('Bu nota erişiminiz yok.');
+      if (!v || (s.role !== 'teacher' && (s.role !== 'parent' || !myIds(s).includes(v.student_id)))) throw new Error('Bu nota erişiminiz yok.');
       return v.audio;
     },
     async markVoiceHeard(id) {
       const v = (db.voice_notes || []).find((x) => x.id === id);
       const s = session();
-      if (!v || s.role !== 'parent' || v.student_id !== s.student_id) throw new Error('Bu nota erişiminiz yok.');
+      if (!v || s.role !== 'parent' || !myIds(s).includes(v.student_id)) throw new Error('Bu nota erişiminiz yok.');
       if (!v.heard_at) { v.heard_at = new Date().toISOString(); write(db); }
     },
     async update(table, id, patch) {
@@ -122,7 +135,7 @@ export function createLocalStore() {
     },
     async createAccount({ username, password, role, student_id }) {
       if (db.accounts.some((a) => a.username === username)) throw new Error(`"${username}" kullanıcı adı zaten kullanılıyor.`);
-      const acc = { id: uid(), username, pw: await hash(password), role, student_id };
+      const acc = { id: uid(), username, pw: await hash(password), role, student_id, links: [] };
       db.accounts.push(acc); write(db); return acc.id;
     },
     async setPassword({ username, password }) {
@@ -131,7 +144,38 @@ export function createLocalStore() {
       acc.pw = await hash(password); write(db);
     },
     async accountExists(username) { return db.accounts.some((a) => a.username === username); },
-    async deleteAccountsFor(studentId) { db.accounts = db.accounts.filter((a) => a.student_id !== studentId); write(db); },
+    async deleteAccountsFor(studentId) {
+      db.accounts = db.accounts.filter((a) => {
+        if (a.role === 'student') return a.student_id !== studentId;
+        if (a.role === 'parent' && kidsOf(a).includes(studentId)) return dropKid(a, studentId);
+        return true;
+      });
+      write(db);
+    },
+    async linkSibling(studentId, siblingId) {
+      if (studentId === siblingId) throw new Error('Öğrenci kendisiyle kardeş olamaz.');
+      const target = parentsOf(siblingId)[0];
+      if (!target) throw new Error('Kardeşin veli hesabı bulunamadı.');
+      for (const old of parentsOf(studentId).filter((a) => a !== target)) {
+        for (const k of kidsOf(old)) if (k !== target.student_id && !(target.links ||= []).includes(k)) target.links.push(k);
+        db.accounts = db.accounts.filter((a) => a !== old);
+      }
+      if (studentId !== target.student_id && !(target.links ||= []).includes(studentId)) target.links.push(studentId);
+      const pw = (db.logins || []).find((l) => l.student_id === siblingId)?.parent_pw || '';
+      for (const k of kidsOf(target)) {
+        const st = db.students.find((x) => x.id === k); if (st) st.parent_username = target.username;
+        const l = (db.logins ||= []).find((x) => x.student_id === k);
+        if (l) l.parent_pw = pw; else db.logins.push({ id: uid(), student_id: k, student_pw: '', parent_pw: pw });
+      }
+      write(db); return target.username;
+    },
+    async unlinkSibling(studentId, { username, password }) {
+      const olds = parentsOf(studentId);
+      if (olds.every((a) => kidsOf(a).length < 2)) throw new Error('Bu öğrencinin kardeşi yok; ayırmaya gerek yok.');
+      await store.createAccount({ username, password, role: 'parent', student_id: studentId });
+      for (const a of olds) dropKid(a, studentId);
+      write(db);
+    },
     async setHomeworkDone(id, done) {
       const s = session();
       const h = db.homework.find((x) => x.id === id);

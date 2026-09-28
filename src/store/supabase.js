@@ -35,6 +35,7 @@ function fail(error, fallback) {
   if (/student_id.*books|books.*student_id/i.test(m)) throw new Error('Öğrenci kitapları için veritabanı güncellemesi gerekiyor: supabase/guncelleme-2026-09-26d-ogrenci-kitaplari.sql dosyasını Supabase SQL Editor\'de bir kez çalıştırın.');
   if (/voice_notes|mark_voice_heard/i.test(m) && /does not exist|schema cache|not find/i.test(m)) throw new Error('Sesli not için veritabanı güncellemesi gerekiyor: supabase/guncelleme-2026-09-27-sesli-not.sql dosyasını Supabase SQL Editor\'de bir kez çalıştırın.');
   if (/extra_lessons/i.test(m) && /does not exist|schema cache|not find/i.test(m)) throw new Error('Ek ders için veritabanı güncellemesi gerekiyor: supabase/guncelleme-2026-09-27b-ek-ders.sql dosyasını Supabase SQL Editor\'de bir kez çalıştırın.');
+  if (/link_sibling|unlink_sibling|parent_links/i.test(m) && /does not exist|schema cache|not find/i.test(m)) throw new Error('Kardeş (ortak veli) için veritabanı güncellemesi gerekiyor: supabase/guncelleme-2026-09-28-kardes.sql dosyasını Supabase SQL Editor\'de bir kez çalıştırın.');
   if (/Failed to fetch|NetworkError/i.test(m)) throw new Error('İnternet bağlantısı yok. Bağlantıyı kontrol edip tekrar deneyin.');
   throw new Error(fallback ? `${fallback} (${m})` : m);
 }
@@ -146,6 +147,19 @@ export function createSupabaseStore({ url, anonKey }) {
     async deleteAccountsFor(studentId) {
       const { error } = await sb.rpc('delete_accounts_for', { p_student: studentId });
       fail(error, 'Hesaplar silinemedi');
+    },
+    // Kardeşler: studentId'nin velisi siblingId'nin veli hesabı olur (tek kullanıcı adı + tek şifre). Ortak kullanıcı adını döner.
+    async linkSibling(studentId, siblingId) {
+      const { data, error } = await sb.rpc('link_sibling', { p_student: studentId, p_sibling: siblingId });
+      fail(error, 'Kardeş bağlanamadı');
+      return data;
+    },
+    // Kardeşten ayır: önce yeni veli hesabı açılır, sonra öğrenci eski ortak hesaptan çıkarılır
+    async unlinkSibling(studentId, { username, password }) {
+      const keep = await this.createAccount({ username, password, role: 'parent', student_id: studentId });
+      const { error } = await sb.rpc('unlink_sibling', { p_student: studentId, p_keep: keep });
+      if (error) await sb.rpc('cancel_parent_account', { p_user: keep, p_student: studentId }); // yarım kalan hesabı geri al
+      fail(error, 'Kardeşten ayrılamadı');
     },
     async setHomeworkDone(id, done) {
       const { error } = await sb.rpc('set_homework_done', { p_id: id, p_done: done });
