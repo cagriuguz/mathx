@@ -3,7 +3,7 @@ import { useState } from 'preact/hooks';
 import { useApp, useAction, Icon, StatusChip, Sheet, Field } from '../ui.jsx';
 import { REASON_MAX, cleanReason, scheduleAt } from '../core/lessons.js';
 import { fmtShort, fmtDate } from '../core/dates.js';
-import { fmtTL, fmtHours } from '../core/money.js';
+import { fmtTL, fmtHours, fmtNum } from '../core/money.js';
 import { PLAN_TYPES, STATUS_LABEL } from '../core/billing.js';
 
 const LESSON_CHIP = {
@@ -83,7 +83,7 @@ export function LessonRow({ lesson, name, editable = true }) {
 }
 
 export function periodRange(p) {
-  if (p.type === 'oneoff') return `${p.package_hours} saatlik paket · son ödeme ${fmtShort(p.due)}`;
+  if (p.type === 'oneoff') return `${fmtNum(p.package_hours)} derslik paket · son ödeme ${fmtShort(p.due)}`;
   return `${fmtShort(p.start)} – ${fmtShort(p.end)}`;
 }
 
@@ -100,7 +100,7 @@ export function PeriodBody({ p, showName = true }) {
           </div>
         )}
         {p.extra_hours > 0 && (
-          <div class="item-sub">{fmtHours(p.extra_hours)} ek ders dahil{p.shortened ? ` · bitiş ${fmtShort(p.end)} (${fmtShort(p.cal_end)} yerine)` : ''}</div>
+          <div class="item-sub">{fmtNum(p.extra_hours)} ek ders dahil{p.shortened ? ` · bitiş ${fmtShort(p.end)} (${fmtShort(p.cal_end)} yerine)` : ''}</div>
         )}
         {p.type === 'oneoff' && <div class="item-sub">Kullanılan: {fmtHours(p.used_hours)} / {fmtHours(p.package_hours)}</div>}
         {p.paid > 0 && p.remaining > 0 && <div class="item-sub">Ödenen {fmtTL(p.paid)}, kalan {fmtTL(p.remaining)}</div>}
@@ -132,7 +132,7 @@ export function MissedList({ missed }) {
 
 /**
  * Ek ders girişi: programda olmayan, fazladan yapılan ders. Ödeme dönemini doldurur
- * (ör. haftada 2 saatlik öğrenciye 2 saat ek ders = 1 hafta sayılır).
+ * (ör. haftada 2 derslik öğrenciye 2 ek ders = 1 hafta sayılır).
  */
 export function ExtraLessonSheet({ studentId = '', onClose }) {
   const { data, now, store, reload } = useApp();
@@ -185,7 +185,7 @@ export function ExtraLessonSheet({ studentId = '', onClose }) {
         </Field>
         <div class="hint">
           Ek ders ücrete eklenmez; ödeme paketini doldurur.
-          {weekly > 0 && ` Bu öğrencinin programı haftada ${fmtHours(weekly)}; ${fmtHours(f.hours)} ek ders ${fmtWeeks(f.hours / weekly)} sayılır, paket o kadar erken dolar.`}
+          {weekly > 0 && ` Bu öğrencinin programı haftada ${fmtHours(weekly)}; ${fmtNum(f.hours)} ek ders ${fmtWeeks(f.hours / weekly)} sayılır, paket o kadar erken dolar.`}
         </div>
         <button class="btn primary block" disabled={busy} onClick={save}>Kaydet</button>
       </div>

@@ -330,11 +330,11 @@ function RangeEarnings() {
           <>
             <div class="figures inner">
               <Fig v={r.received ? fmtTL(r.received) : '0 TL'} l={r.received ? '✓ Alınan ödemeler' : 'Gelir yok'} tone={r.received ? 'ok' : ''} s={`${fmtShort(from)} – ${fmtShort(to)}`} />
-              <Fig v={fmtTL(r.earned)} l="Yapılan derslerin kazancı" s={`${r.done_count} ders · ${fmtHours(r.done_hours)}${r.not_held ? ` · ${r.not_held} yapılmadı` : ''}`} />
+              <Fig v={fmtTL(r.earned)} l="Yapılan derslerin kazancı" s={`${fmtHours(r.done_hours)}${r.not_held ? ` · ${r.not_held} yapılmadı` : ''}`} />
               <Fig v={fmtTL(r.planned)} l="Kalan derslerin kazancı" s={r.planned_hours ? `${fmtHours(r.planned_hours)} daha planlı` : 'planlı ders kalmadı'} />
               <Fig v={fmtTL(r.expected)} l="Beklenen tahsilat" s={r.expected_remaining ? `vadesi bu aralıkta · ${fmtTL(r.expected_remaining)} ödenmedi` : 'vadesi bu aralıkta'} />
             </div>
-            <div class="hint">Toplam kazanç (yapılan + kalan dersler): <b>{fmtTL(r.earned + r.planned)}</b>. Kazanç = ders saati × o dönemin 1 saatlik ücreti; yapılmayan dersler sayılmaz.</div>
+            <div class="hint">Toplam kazanç (yapılan + kalan dersler): <b>{fmtTL(r.earned + r.planned)}</b>. Kazanç = ders sayısı × o dönemin 1 derslik ücreti; yapılmayan dersler sayılmaz.</div>
             {r.students.length > 0 && (
               <>
                 <button class="btn small ghost" onClick={() => setShowStudents(!showStudents)}>{showStudents ? 'Öğrenci dökümünü gizle' : `Öğrenci bazında göster (${r.students.length})`}</button>

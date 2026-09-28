@@ -18,4 +18,6 @@ export function parseTL(text) {
   return Number.isFinite(v) ? Math.round(v * 100) : NaN;
 }
 
-export const fmtHours = (h) => (Number.isInteger(h) ? String(h) : String(h).replace('.', ',')) + ' saat';
+export const fmtNum = (h) => (Number.isInteger(h) ? String(h) : String(h).replace('.', ','));
+// Süre birimi DERS (1 = 1 ders); kayıtlı sayı ve ücret hesabı aynı, yalnızca yazılışı "ders".
+export const fmtHours = (h) => fmtNum(h) + ' ders';

@@ -142,7 +142,7 @@ function PlanFields({ plan, setPlan, errors }) {
           <input class="input" inputMode="decimal" value={plan.fee} onInput={(e) => { const v = e.currentTarget.value; setPlan((o) => ({ ...o, fee: v })); }} placeholder="Ör. 4.000" />
         </Field>
         {plan.type === 'oneoff' && (
-          <Field label="Kaç saatlik ders" required error={errors.hours}>
+          <Field label="Kaç derslik paket" required error={errors.hours}>
             <input class="input" inputMode="decimal" value={plan.hours} onInput={(e) => { const v = e.currentTarget.value; setPlan((o) => ({ ...o, hours: v })); }} placeholder="Ör. 8" />
           </Field>
         )}
@@ -153,10 +153,10 @@ function PlanFields({ plan, setPlan, errors }) {
         </Field>
       )}
       <div class="hint">
-        {plan.type === 'monthly' && 'Yapılmayan ders saati × (aylık ücret ÷ o ayın ders saati) tutardan düşülür. Gecikme uyarısı son tarihten 3 gün sonra.'}
+        {plan.type === 'monthly' && 'Yapılmayan ders × (aylık ücret ÷ o ayın ders sayısı) tutardan düşülür. Gecikme uyarısı son tarihten 3 gün sonra.'}
         {plan.type === '4weekly' && 'Yapılmayan dersler 4 hafta sonunda tutardan düşülür. Gecikme uyarısı son tarihten 5 gün sonra.'}
         {plan.type === 'weekly' && 'Her hafta sonunda ödeme zamanı gelir; yapılmayan ders düşülür.'}
-        {plan.type === 'oneoff' && 'Tek seferlik paket: tutar sabittir; kullanılan saat takip edilir.'}
+        {plan.type === 'oneoff' && 'Tek seferlik paket: tutar sabittir; kullanılan ders takip edilir.'}
       </div>
     </>
   );
@@ -168,7 +168,7 @@ function checkPlan(plan) {
   if (!(fee > 0)) e.fee = 'Geçerli bir tutar yazın.';
   if (plan.type === 'oneoff') {
     const h = Number(String(plan.hours).replace(',', '.'));
-    if (!(h > 0)) e.hours = 'Saat sayısını yazın.';
+    if (!(h > 0)) e.hours = 'Ders sayısını yazın.';
     if (!plan.due_date) e.due_date = 'Son ödeme tarihini seçin.';
   }
   return e;
