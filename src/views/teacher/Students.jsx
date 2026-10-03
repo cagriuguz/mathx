@@ -5,7 +5,8 @@ import { scheduleAt } from '../../core/lessons.js';
 import { TR_DAYS, TR_DAYS_SHORT, fmtDate, addDays } from '../../core/dates.js';
 import { fmtTL, parseTL, fmtHours } from '../../core/money.js';
 import { isValidPhone } from '../../core/messages.js';
-import { cleanUsername, checkUsername, generatePasswordPair } from '../../store/common.js';
+import { cleanUsername, checkUsername, generatePassword, generatePasswordPair } from '../../store/common.js';
+import { hwState } from '../../core/hwitems.js';
 import { SITE_URL } from '../../config.js';
 import { withConn } from '../../store/conn.js';
 import { PeriodBody, ExtraLessonSheet } from '../shared.jsx';
@@ -327,16 +328,20 @@ function CredentialsSheet({ student, pwS, pwP, onClose, title, onReset, busy, la
           <div class="cred"><div><div class="small muted">Veli · {student.parent_username}</div><code>{pwP || '—'}</code></div></div>
         </div>
         {known && (<>
-          <div class="msg">{msgP}</div>
-          <div class="row wrap">
-            <WaButton phone={student.parent_phone} text={msgP} label="Veliye gönder" />
-            <button class="btn" onClick={() => copyText(msgP)}><Icon name="copy" /> Kopyala</button>
-          </div>
-          <div class="msg">{msgS}</div>
-          <div class="row wrap">
-            {student.phone && <WaButton phone={student.phone} text={msgS} label="Öğrenciye gönder" />}
-            <button class="btn" onClick={() => copyText(msgS)}><Icon name="copy" /> Kopyala</button>
-          </div>
+          {pwP ? (<>
+            <div class="msg">{msgP}</div>
+            <div class="row wrap">
+              <WaButton phone={student.parent_phone} text={msgP} label="Veliye gönder" />
+              <button class="btn" onClick={() => copyText(msgP)}><Icon name="copy" /> Kopyala</button>
+            </div>
+          </>) : <div class="hint">Velinin şifresi kayıtlı değil (kendisi değiştirmiş ya da hiç kaydedilmemiş). "Kullanıcı adı / şifre yenile"den yeni şifre oluşturun.</div>}
+          {pwS ? (<>
+            <div class="msg">{msgS}</div>
+            <div class="row wrap">
+              {student.phone && <WaButton phone={student.phone} text={msgS} label="Öğrenciye gönder" />}
+              <button class="btn" onClick={() => copyText(msgS)}><Icon name="copy" /> Kopyala</button>
+            </div>
+          </>) : <div class="hint">Öğrencinin şifresi kayıtlı değil (kendisi değiştirmiş ya da hiç kaydedilmemiş). "Kullanıcı adı / şifre yenile"den yeni şifre oluşturun.</div>}
         </>)}
         {!known && onReset && <button class="btn primary" disabled={busy} onClick={onReset}><Icon name="key" /> Yeni şifre oluştur ve göster</button>}
         <div><button class="btn ghost" onClick={onClose}>{later ? 'Sonra gönderirim' : 'Tamam'}</button></div>
@@ -398,6 +403,7 @@ function StudentDetail({ id, onClose }) {
 
   if (creds) return <CredentialsSheet title="Yeni şifreler" {...creds} onReset={resetPw} busy={busy} onClose={() => setCreds(null)} />;
   if (mode === 'edit') return <EditSheet s={s} onClose={() => setMode(null)} />;
+  if (mode === 'acc') return <AccountSheet s={s} sibs={sibs} kids={kids} onClose={() => setMode(null)} onDone={(c) => { setMode(null); setCreds(c); }} />;
   if (mode === 'sib') return <SiblingSheet s={s} onClose={() => setMode(null)} />;
   if (mode === 'unsib') return <UnlinkSheet s={s} sibs={sibs} onClose={() => setMode(null)} onDone={(c) => { setMode(null); setCreds(c); }} />;
   if (mode === 'extra') return <ExtraLessonSheet studentId={s.id} onClose={() => setMode(null)} />;
@@ -416,7 +422,7 @@ function StudentDetail({ id, onClose }) {
             <li class="spread"><span class="muted">Başlangıç</span><span>{fmtDate(s.start_date)}{s.active === false ? ` · bitiş ${fmtDate(s.end_date)}` : ''}</span></li>
             <li class="spread"><span class="muted">Kullanıcı adları</span><span class="right">Öğrenci: {s.student_username}<br />Veli: {s.parent_username}{sibs.length ? ' (ortak)' : ''}</span></li>
             {sibs.length > 0 && <li class="spread"><span class="muted">Kardeşler</span><span class="right">{sibs.map((x) => x.name).join(', ')}</span></li>}
-            <li class="spread"><span class="muted">Ödevler</span><span>{hw.filter((h) => h.done).length} / {hw.length} yapıldı</span></li>
+            <li class="spread"><span class="muted">Ödevler</span><span>{hw.filter((h) => hwState(h) === 'done').length} / {hw.length} yapıldı</span></li>
           </ul>
         </div>
         <button class="btn primary" onClick={showPw}><Icon name="key" /> Giriş bilgilerini gönder (veli / öğrenci)</button>
@@ -424,7 +430,7 @@ function StudentDetail({ id, onClose }) {
           <button class="btn small" onClick={() => setMode('edit')}><Icon name="edit" /> Bilgileri düzenle</button>
           <button class="btn small" onClick={() => setMode('program')}><Icon name="calendar" /> Program / ücret değiştir</button>
           <button class="btn small" onClick={() => setMode('extra')}><Icon name="plus" /> Ek ders ekle</button>
-          <button class="btn small" disabled={busy} onClick={resetPw}><Icon name="key" /> Şifreleri yenile</button>
+          <button class="btn small" onClick={() => setMode('acc')}><Icon name="key" /> Kullanıcı adı / şifre yenile</button>
           <button class="btn small" onClick={() => setMode('sib')}><Icon name="plus" /> Kardeş bağla (ortak veli)</button>
           {sibs.length > 0 && <button class="btn small ghost" onClick={() => setMode('unsib')}>Kardeşten ayır</button>}
         </div>
@@ -451,6 +457,62 @@ function StudentDetail({ id, onClose }) {
           <button class="btn small" onClick={toggleActive}>{s.active === false ? 'Yeniden aktif et' : 'Pasife al (ayrıldı)'}</button>
           <button class="btn small danger ghost" onClick={del}><Icon name="trash" /> Sil</button>
         </div>
+      </div>
+    </Sheet>
+  );
+}
+
+/** Öğretmen: öğrencinin ve velinin kullanıcı adını değiştirir ve/veya şifresini yeniler (ikisi birbirinden bağımsız) */
+function AccountSheet({ s, sibs, kids, onClose, onDone }) {
+  const { data, store, reload } = useApp();
+  const [run, busy] = useAction();
+  const [f, setF] = useState({ su: s.student_username, pu: s.parent_username, rs: false, rp: false });
+  const [err, setErr] = useState('');
+  const set = (k) => (e) => { const v = e.currentTarget.value; setF((o) => ({ ...o, [k]: v })); setErr(''); };
+
+  const save = async () => {
+    const su = cleanUsername(f.su), pu = cleanUsername(f.pu);
+    for (const [u, who] of [[su, 'Öğrenci'], [pu, 'Veli']]) { const bad = checkUsername(u); if (bad) return setErr(`${who}: ${bad}`); }
+    if (su === pu) return setErr('Öğrenci ve veli kullanıcı adı aynı olamaz.');
+    const renS = su !== s.student_username, renP = pu !== s.parent_username;
+    if (!renS && !renP && !f.rs && !f.rp) return setErr('Değiştirmek için yeni bir kullanıcı adı yazın ya da "Yeni şifre oluştur"u seçin.');
+    if ((renP || f.rp) && sibs.length && !confirm(`Veli hesabı ortak: bu değişiklik ${sibs.map(firstName).join(', ')} velisi için de geçerli olur. Devam edilsin mi?`)) return;
+    const ok = await run(async () => {
+      // Hiçbir şey yarım kalmasın: yeni adların boş olduğunu önce denetle
+      if (renS && (await store.accountExists(su))) throw new Error(`"${su}" kullanıcı adı zaten kullanılıyor.`);
+      if (renP && (await store.accountExists(pu))) throw new Error(`"${pu}" kullanıcı adı zaten kullanılıyor.`);
+      if (renS) await store.renameAccount(s.student_username, su);
+      if (renP) await store.renameAccount(s.parent_username, pu);
+      const l = (data.logins || []).find((x) => x.student_id === s.id);
+      let pwS = l?.student_pw || '', pwP = l?.parent_pw || '';
+      if (f.rs) { pwS = generatePassword(); await store.setPassword({ username: su, password: pwS }); }
+      if (f.rp) { pwP = generatePassword(); await store.setPassword({ username: pu, password: pwP }); }
+      if (f.rs || f.rp) {
+        await saveLogins(store, data, s.id, pwS, pwP);
+        if (f.rp) await saveParentPw(store, data, sibs, pwP);
+      }
+      await reload();
+      onDone({ student: { ...s, student_username: su, parent_username: pu }, pwS, pwP, kids, title: 'Yeni giriş bilgileri' });
+    }, 'Giriş bilgileri güncellendi');
+    return ok;
+  };
+
+  return (
+    <Sheet title="Kullanıcı adı / şifre yenile" onClose={onClose}>
+      <div class="stack">
+        <p class="muted" style="margin:0">Kullanıcı adı değişince kişi yeni adla girer; şifresi aynı kalır. İsterseniz yeni bir şifre de oluşturabilirsiniz. Değişiklikten sonra yeni bilgileri WhatsApp'tan gönderebilirsiniz.</p>
+        <div class="card card-pad stack">
+          <b>Öğrenci</b>
+          <Field label="Kullanıcı adı"><input class="input" autocapitalize="none" value={f.su} onInput={set('su')} /></Field>
+          <Seg options={[['keep', 'Şifre aynı kalsın'], ['new', 'Yeni şifre oluştur']]} value={f.rs ? 'new' : 'keep'} onChange={(v) => setF((o) => ({ ...o, rs: v === 'new' }))} />
+        </div>
+        <div class="card card-pad stack">
+          <b>Veli{sibs.length ? ' (kardeşlerle ortak hesap)' : ''}</b>
+          <Field label="Kullanıcı adı"><input class="input" autocapitalize="none" value={f.pu} onInput={set('pu')} /></Field>
+          <Seg options={[['keep', 'Şifre aynı kalsın'], ['new', 'Yeni şifre oluştur']]} value={f.rp ? 'new' : 'keep'} onChange={(v) => setF((o) => ({ ...o, rp: v === 'new' }))} />
+        </div>
+        {err && <div class="error" role="alert">{err}</div>}
+        <button class="btn primary block" disabled={busy} onClick={save}>{busy ? 'Kaydediliyor…' : 'Kaydet'}</button>
       </div>
     </Sheet>
   );

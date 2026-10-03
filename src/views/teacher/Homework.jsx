@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'preact/hooks';
-import { useApp, useAction, Tabs, Icon, Field, Empty, WaButton } from '../../ui.jsx';
+import { useApp, useAction, Tabs, Icon, Field, Empty, WaButton, Seg, StudentPicker } from '../../ui.jsx';
 import { msgHomeworkGiven, msgHomeworkGivenStudent, msgHomeworkDone } from '../../core/messages.js';
+import { WA_RECIPIENTS } from '../../core/wa.js';
 import { addDays, fmtDate, fmtShort } from '../../core/dates.js';
-import { PhotoGallery } from '../photos.jsx';
-import { photoCounts } from '../../core/photos.js';
+import { HomeworkItems, TeacherItemEdit } from '../hwitems.jsx';
+import { hwState, HW_CHIP } from '../../core/hwitems.js';
+import { siblingsOf } from './Students.jsx';
 import { studentBooks, unassignedBooks, hasBook, bookSuggestions, cleanBookName } from '../../core/books.js';
 
 export function Homework() {
@@ -29,10 +31,15 @@ function Give() {
   const [due, setDue] = useState(addDays(now.date, 7));
   const [saved, setSaved] = useState(null);
   const [err, setErr] = useState('');
+  const [to, setTo] = useState('both'); // otomatik modda kime gidecek: ikisine birden / yalnız veli / yalnız öğrenci
+  const auto = settings.wa_mode === 'auto';
 
   const items = books.filter((b) => (pages[b.id] || '').trim()).map((b) => ({ book_id: b.id, book_name: b.name, pages: pages[b.id].trim() }));
-  const text = items.length ? msgHomeworkGiven(items, due) : '';
   const student = students.find((s) => s.id === sid);
+  // Kardeşi olan velinin mesajında hangi çocuğun ödevi olduğu adla yazılır
+  const sibling = student ? siblingsOf(data, student).length > 0 : false;
+  const parentText = (its, d) => msgHomeworkGiven(its, d, { studentName: student?.name, sibling });
+  const text = items.length ? parentText(items, due) : '';
 
   const save = async () => {
     if (!sid) return setErr('Öğrenci seçin.');
@@ -40,17 +47,22 @@ function Give() {
     if (!due) return setErr('Son bitirme tarihini seçin.');
     setErr('');
     await run(async () => {
-      const h = await store.insert('homework', { student_id: sid, given_date: now.date, due_date: due, items, note: '', done: false, done_at: null, sent_given: false, sent_done: false, seen_done: true });
+      const row = { student_id: sid, given_date: now.date, due_date: due, items, note: '', done: false, done_at: null, sent_given: false, sent_done: false, seen_done: true };
+      if (auto) row.wa_to = to;
+      const h = await store.insert('homework', row);
       await reload();
-      // Otomatik modda veliye ve öğrenciye kendiliğinden gider; olmazsa elle gönderme düğmeleri çıkar
-      const auto = settings.wa_mode === 'auto';
-      setSaved({ h, text, studentText: msgHomeworkGivenStudent(items, due), student, auto: auto ? 'sending' : null });
+      // Otomatik modda seçilen kişiye (ikisine birden / veli / öğrenci) kendiliğinden gider; olmazsa elle gönderme düğmeleri çıkar
+      setSaved({ h, text, studentText: msgHomeworkGivenStudent(items, due), student, to: auto ? to : 'both', auto: auto ? 'sending' : null });
       if (auto) {
         const r = await store.waSend('given', h.id);
         setSaved((o) => o && { ...o, auto: r.ok ? 'sent' : 'failed', error: r.error });
         if (r.ok) reload();
       }
-    }, settings.wa_mode === 'auto' ? null : 'Ödev kaydedildi');
+    }, auto ? null : 'Ödev kaydedildi');
+  };
+  const removeBook = (b) => {
+    if (!confirm(`"${b.name}" kitabı ${student?.name || 'bu öğrenci'} için silinsin mi? Daha önce verilmiş ödevlerdeki kitap adı korunur.`)) return;
+    run(async () => { await store.remove('books', b.id); setPages((o) => { const { [b.id]: _, ...rest } = o; return rest; }); await reload(); }, 'Kitap silindi');
   };
   const markSent = () => saved && store.update('homework', saved.h.id, { sent_given: true }).then(reload).catch(() => {});
 
@@ -58,18 +70,16 @@ function Give() {
     return (
       <div class="card card-pad stack">
         <h2 class="section-title">Ödev kaydedildi</h2>
-        <div class="small muted">Veliye giden mesaj</div>
-        <div class="msg">{saved.text}</div>
-        <div class="small muted">Öğrenciye giden mesaj</div>
-        <div class="msg">{saved.studentText}</div>
-        {saved.auto === 'sending' && <div class="hint">Veliye ve öğrenciye otomatik gönderiliyor…</div>}
-        {saved.auto === 'sent' && <div class="chip ok" style="align-self:flex-start">Veliye ve öğrenciye otomatik gönderildi ✓</div>}
+        {saved.to !== 'student' && <><div class="small muted">Veliye giden mesaj</div><div class="msg">{saved.text}</div></>}
+        {saved.to !== 'parent' && <><div class="small muted">Öğrenciye giden mesaj</div><div class="msg">{saved.studentText}</div></>}
+        {saved.auto === 'sending' && <div class="hint">Otomatik gönderiliyor…</div>}
+        {saved.auto === 'sent' && <div class="chip ok" style="align-self:flex-start">{WA_RECIPIENTS[saved.to]} otomatik gönderildi ✓</div>}
         {saved.auto === 'failed' && <div class="warn">Otomatik gönderilemedi: {(saved.error || 'bilinmeyen hata').replace(/\.$/, '')}. Aşağıdan elle gönderin.</div>}
         {(!saved.auto || saved.auto === 'failed') && (
           <>
             <div class="row wrap">
-              <WaButton phone={saved.student.parent_phone} text={saved.text} label="Veliye gönder" onSent={markSent} />
-              <WaButton phone={saved.student.phone} text={saved.studentText} label="Öğrenciye gönder" />
+              {saved.to !== 'student' && <WaButton phone={saved.student.parent_phone} text={saved.text} label="Veliye gönder" onSent={markSent} />}
+              {saved.to !== 'parent' && <WaButton phone={saved.student.phone} text={saved.studentText} label="Öğrenciye gönder" />}
             </div>
             <div class="hint">WhatsApp hazır mesajla açılır; göndermek için WhatsApp'ta Gönder'e basın.</div>
           </>
@@ -82,20 +92,19 @@ function Give() {
   return (
     <div class="stack">
       <div class="card card-pad stack">
-        <Field label="Öğrenci" required>
-          <select class="input" value={sid} onChange={(e) => { setSid(e.currentTarget.value); setPages({}); setErr(''); }}>
-            <option value="">Seçin</option>
-            {students.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </Field>
-        {!sid && <div class="hint">Öğrenciyi seçince yalnızca ona atadığınız kitaplar çıkar.</div>}
+        <StudentPicker label="Öğrenci *" students={students} value={sid} onChange={(id) => { setSid(id); setPages({}); setErr(''); }} />
+        {!sid && <div class="hint">Öğrencinin adını yazın ya da listeden seçin; yalnızca ona atadığınız kitaplar çıkar.</div>}
         {sid && <div class="field"><span>{student?.name} için kitaplar ve sayfalar</span></div>}
         {sid && !books.length && <div class="muted">Bu öğrenciye henüz kitap atanmadı. Aşağıdan ekleyin.</div>}
         {books.map((b) => (
-          <Field key={b.id} label={b.name}>
-            <input class="input" value={pages[b.id] || ''} placeholder="Sayfa, ör. 12-20" inputMode="text"
-              onInput={(e) => { const v = e.currentTarget.value; setPages((o) => ({ ...o, [b.id]: v })); }} />
-          </Field>
+          <div key={b.id} class="field">
+            <span>{b.name}</span>
+            <div class="row">
+              <input class="input grow" value={pages[b.id] || ''} placeholder="Sayfa, ör. 12-20" inputMode="text" aria-label={`${b.name} sayfaları`}
+                onInput={(e) => { const v = e.currentTarget.value; setPages((o) => ({ ...o, [b.id]: v })); }} />
+              <button type="button" class="btn small ghost danger" onClick={() => removeBook(b)} aria-label={`${b.name} kitabını bu öğrenciden sil`}><Icon name="trash" /></button>
+            </div>
+          </div>
         ))}
         {sid && <AddBook sid={sid} />}
         <Field label="Son bitirme tarihi (tüm ödev için)" required>
@@ -104,12 +113,16 @@ function Give() {
       </div>
       <div class="card card-pad stack">
         <h2 class="section-title">Gidecek mesajlar</h2>
+        {auto && (
+          <>
+            <div class="small muted">Otomatik mesaj kime gitsin?</div>
+            <Seg options={Object.entries(WA_RECIPIENTS)} value={to} onChange={setTo} />
+          </>
+        )}
         {text ? (
           <>
-            <div class="small muted">Veliye</div>
-            <div class="msg">{text}</div>
-            <div class="small muted">Öğrenciye</div>
-            <div class="msg">{msgHomeworkGivenStudent(items, due)}</div>
+            {to !== 'student' && <><div class="small muted">Veliye</div><div class="msg">{text}</div></>}
+            {to !== 'parent' && <><div class="small muted">Öğrenciye</div><div class="msg">{msgHomeworkGivenStudent(items, due)}</div></>}
           </>
         ) : <div class="muted">Kitapların altına sayfa yazdıkça mesaj burada oluşur.</div>}
         {err && <div class="error">{err}</div>}
@@ -125,7 +138,6 @@ function Track() {
   const [who, setWho] = useState('');
   const [show, setShow] = useState('open');
   const byId = useMemo(() => new Map(data.students.map((s) => [s.id, s])), [data.students]);
-  const pc = useMemo(() => photoCounts(data.homework_photos), [data.homework_photos]);
   const list = data.homework
     .filter((h) => (!who || h.student_id === who) && byId.has(h.student_id))
     .filter((h) => (show === 'open' ? !h.done : show === 'done' ? h.done : true))
@@ -136,36 +148,27 @@ function Track() {
 
   return (
     <div class="stack">
-      <div class="row">
-        <select class="input grow" value={who} onChange={(e) => setWho(e.currentTarget.value)} aria-label="Öğrenci">
-          <option value="">Tüm öğrenciler</option>
-          {data.students.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-      </div>
-      <Tabs tabs={[['open', 'Yapılmadı'], ['done', 'Yapıldı'], ['all', 'Tümü']]} value={show} onChange={setShow} />
+      <StudentPicker students={data.students} value={who} onChange={setWho} allLabel="Tüm öğrenciler" />
+      <Tabs tabs={[['open', 'Bildirilmedi'], ['done', 'Bildirildi'], ['all', 'Tümü']]} value={show} onChange={setShow} />
       {list.length === 0 ? <div class="card"><Empty title="Ödev yok" /></div> : list.map((h) => {
         const s = byId.get(h.student_id);
         const late = !h.done && h.due_date < now.date;
+        const [chipCls, chipLabel] = h.done ? HW_CHIP[hwState(h)] : ['bad', late ? 'Süresi geçti' : 'Bildirilmedi'];
         return (
           <div key={h.id} class={`card card-pad hw${h.done ? ' done' : ''}`}>
             <div class="spread">
               <div class="item-title">{s.name}</div>
-              <span class={`chip ${h.done ? 'ok' : 'bad'}`}>{h.done ? 'Yapıldı' : late ? 'Süresi geçti' : 'Yapılmadı'}</span>
+              <span class={`chip ${chipCls}`}>{chipLabel}</span>
             </div>
-            <div class="hw-books">
-              {h.items.map((i, k) => <div key={k} class="hw-book"><b>{i.book_name}</b><span>{i.pages}</span></div>)}
-            </div>
+            <HomeworkItems h={h} renderEdit={(k) => <TeacherItemEdit key={`${h.id}-${k}-${h.items[k].status}-${h.items[k].teacher_note || ''}`} h={h} index={k} />} />
             <div class="spread small muted">
               <span>Verildi {fmtShort(h.given_date)} · Son gün {fmtDate(h.due_date)}</span>
               <span>{h.sent_given ? 'Veliye gönderildi ✓' : ''}</span>
             </div>
-            {!h.done && !pc.get(h.id) && <div class="hint" style="margin-top:6px">Henüz fotoğraf yüklenmedi</div>}
-            {!h.done && pc.get(h.id) > 0 && <div class="hint" style="margin-top:6px">Öğrenci fotoğraf yüklüyor; henüz "yaptım" demedi</div>}
             <div class="row wrap" style="margin-top:10px">
-              <PhotoGallery h={h} small title={`${s.name} · ödev fotoğrafları`} />
               {h.done
-                ? <WaButton small phone={s.parent_phone} text={msgHomeworkDone(s.name, h.items)} label={h.sent_done ? 'Tekrar gönder' : 'Yapıldı mesajı'} onSent={() => sentDone(h)} />
-                : <WaButton small phone={s.parent_phone} text={msgHomeworkGiven(h.items, h.due_date)} label="Ödevi tekrar gönder" />}
+                ? <WaButton small phone={s.parent_phone} text={msgHomeworkDone(s.name, h.items)} label={h.sent_done ? 'Tekrar gönder' : 'Durum mesajı'} onSent={() => sentDone(h)} />
+                : <WaButton small phone={s.parent_phone} text={msgHomeworkGiven(h.items, h.due_date, { studentName: s.name, sibling: siblingsOf(data, s).length > 0 })} label="Ödevi tekrar gönder" />}
               <button class="btn small ghost danger" onClick={() => del(h)}><Icon name="trash" /></button>
             </div>
           </div>
@@ -222,12 +225,7 @@ function Books() {
   return (
     <div class="stack">
       <div class="card card-pad stack">
-        <Field label="Öğrenci">
-          <select class="input" value={sid} onChange={(e) => setSid(e.currentTarget.value)}>
-            <option value="">Seçin</option>
-            {students.map((s) => <option key={s.id} value={s.id}>{s.name} ({studentBooks(data.books, s.id).length} kitap)</option>)}
-          </select>
-        </Field>
+        <StudentPicker label="Öğrenci" students={students} value={sid} onChange={setSid} extra={(x) => ` (${studentBooks(data.books, x.id).length} kitap)`} />
         {sid ? <AddBook sid={sid} /> : <div class="hint">Her öğrencinin kitapları ayrıdır; ödev verirken yalnızca o öğrencinin kitapları görünür.</div>}
       </div>
       {sid && (

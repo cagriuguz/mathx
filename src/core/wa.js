@@ -1,7 +1,7 @@
 // Otomatik WhatsApp (WhatsApp Business / Meta Cloud API) kararları. Saf işlevler: sunucu işlevi
 // (supabase/functions/wa-send) bunları kullanır, testler doğrudan dener. Tanımlı değilse ya da
 // hata olursa program ELLE yönteme düşer; hiçbir iş otomatik gönderime bağımlı değildir.
-import { WA_TEMPLATES, homeworkGivenParams, homeworkDoneParams, normalizePhone, isValidPhone } from './messages.js';
+import { WA_TEMPLATES, homeworkGivenParams, homeworkDoneParams, parentGiven, normalizePhone, isValidPhone } from './messages.js';
 
 export const GRAPH_URL = 'https://graph.facebook.com/v23.0';
 
@@ -10,10 +10,13 @@ export const autoReady = (settings, cfg) => settings?.wa_mode === 'auto' && !!cf
 
 /**
  * Hangi şablon kime gidecek?  Dönüş: { skip } | { error, status } | { sends: [{ to, template, params }], flag, sentField }
- * given: öğretmen ödevi kaydedince → veliye veli şablonu, öğrenciye öğrenci şablonu.
- * done: öğrenci "yaptım" deyince → öğretmen + veli.
+ * given: öğretmen ödevi kaydedince → h.wa_to'ya göre: 'both' (veli + öğrenci, varsayılan) | 'parent' | 'student'.
+ *   Veli şablonu kardeşi olan velide öğrenci adını yazar (siblings = aynı veli hesabını kullanan diğer öğrenci sayısı).
+ * done: öğrenci ödev durumunu bildirince → öğretmen + veli.
  */
-export function planHomeworkMessage({ kind, profile, homework: h, student: s, settings }) {
+export const WA_RECIPIENTS = { both: 'İkisine birden', parent: 'Yalnız veliye', student: 'Yalnız öğrenciye' };
+
+export function planHomeworkMessage({ kind, profile, homework: h, student: s, settings, siblings = 0 }) {
   if (!profile) return { error: 'Oturum yok', status: 401 };
   if (settings?.wa_mode !== 'auto') return { skip: 'manual' };
   if (!h || !s) return { error: 'Ödev bulunamadı', status: 404 };
@@ -25,8 +28,12 @@ export function planHomeworkMessage({ kind, profile, homework: h, student: s, se
   if (kind === 'given') {
     if (!teacher) return { error: 'Yetki yok', status: 403 };
     if (h.wa_given_at) return { skip: 'already' };
-    const params = homeworkGivenParams(h.items, h.due_date);
-    plan = { sends: [{ to: s.parent_phone, template: WA_TEMPLATES.given, params }, { to: s.phone, template: WA_TEMPLATES.givenStudent, params }], flag: 'wa_given_at', sentField: 'sent_given' };
+    const to = h.wa_to in WA_RECIPIENTS ? h.wa_to : 'both';
+    const par = parentGiven(h.items, h.due_date, s.name, siblings > 0);
+    const sends = [];
+    if (to !== 'student') sends.push({ to: s.parent_phone, template: par.template, params: par.params });
+    if (to !== 'parent') sends.push({ to: s.phone, template: WA_TEMPLATES.givenStudent, params: homeworkGivenParams(h.items, h.due_date) });
+    plan = { sends, flag: 'wa_given_at', sentField: 'sent_given' };
   } else if (kind === 'done') {
     if (!teacher && !own) return { error: 'Yetki yok', status: 403 };
     if (!h.done) return { skip: 'not-done' };

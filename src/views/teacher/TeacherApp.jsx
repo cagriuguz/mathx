@@ -13,7 +13,8 @@ import { Students } from './Students.jsx';
 import { Homework } from './Homework.jsx';
 import { Money, PaymentSheet } from './Money.jsx';
 import { Settings } from './Settings.jsx';
-import { PhotoGallery } from '../photos.jsx';
+import { HomeworkItems } from '../hwitems.jsx';
+import { hwState, HW_CHIP } from '../../core/hwitems.js';
 
 const NAV = [
   { key: 'panel', label: 'Panel', icon: 'home', title: 'Günaydın' },
@@ -43,7 +44,7 @@ export function TeacherApp() {
       if (fresh.length) {
         const h = data.homework.find((x) => x.id === fresh[0]);
         const s = data.students.find((x) => x.id === h?.student_id);
-        toast(`${s?.name || 'Bir öğrenci'} ödevini yaptı`);
+        toast(`${s?.name || 'Bir öğrenci'} ödev durumunu bildirdi`);
       }
     }
     seen.current = doneIds;
@@ -114,17 +115,17 @@ function Panel({ go }) {
       <section>
         <div class="section-head"><h2 class="section-title">Bildirimler</h2>{notif.count > 0 && <span class="chip bad">{notif.count}</span>}</div>
         <div class="card">
-          {notif.count === 0 ? <Empty title="Yeni bildirim yok ✓">Öğrenci ödevini işaretleyince, ödev ya da ödeme gecikince burada görünür.</Empty> : (
+          {notif.count === 0 ? <Empty title="Yeni bildirim yok ✓">Öğrenci ödev durumunu bildirince, ödev ya da ödeme gecikince burada görünür.</Empty> : (
             <ul class="list">
               {notif.doneHw.map((h) => {
                 const s = byId.get(h.student_id);
                 const text = msgHomeworkDone(s.name, h.items);
                 return (
                   <li key={'d' + h.id} class="stack">
-                    <div class="spread"><span class="item-title">{s.name}</span><span class="chip ok">Ödevini yaptı</span></div>
+                    <div class="spread"><span class="item-title">{s.name}</span><span class={`chip ${HW_CHIP[hwState(h)][0]}`}>{HW_CHIP[hwState(h)][1]}</span></div>
+                    <HomeworkItems h={h} />
                     <div class="msg">{text}</div>
                     <div class="row wrap">
-                      <PhotoGallery h={h} small title={`${s.name} · ödev fotoğrafları`} />
                       {h.wa_done_at
                         ? <span class="chip ok">Size ve veliye otomatik gönderildi ✓</span>
                         : <WaButton small phone={s.parent_phone} text={text} label="Veliye gönder" onSent={() => markSeen(h, true)} />}

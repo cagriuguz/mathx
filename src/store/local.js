@@ -1,7 +1,6 @@
 // DENEME MODU: veriler yalnızca bu cihazın tarayıcısında durur (senkron yok).
 // Supabase ayarları girilince program otomatik olarak çevrimiçi moda geçer (bkz. store/index.js).
 import { TABLES, ROLE_TABLES, DEFAULT_SETTINGS, uid } from './common.js';
-import { MAX_PHOTOS } from '../core/photos.js';
 import { addDays, localNow, dow } from '../core/dates.js';
 
 const KEY = 'mathx.demo.v1';
@@ -60,8 +59,6 @@ async function seed() {
 export function createLocalStore() {
   let db = read();
   const listeners = new Set();
-  // Deneme modunda fotoğrafların kendisi yalnız bu oturumun belleğinde durur (tarayıcı deposu ~5 MB, sığmaz)
-  const pics = new Map();
   chan?.addEventListener('message', () => { db = read(); listeners.forEach((f) => f()); });
 
   const session = () => { try { return JSON.parse(localStorage.getItem(SESSION)); } catch { return null; } };
@@ -125,49 +122,6 @@ export function createLocalStore() {
       if (!v || s.role !== 'parent' || !myIds(s).includes(v.student_id)) throw new Error('Bu nota erişiminiz yok.');
       if (!v.heard_at) { v.heard_at = new Date().toISOString(); write(db); }
     },
-    // ── Ödev fotoğrafları (Supabase'teki kuralların aynısı)
-    async addPhoto(h, { image, thumb }) {
-      const s = session();
-      const hw = db.homework.find((x) => x.id === h.id);
-      if (!hw || (s.role !== 'teacher' && (s.role !== 'student' || hw.student_id !== s.student_id))) throw new Error('Bu ödeve erişiminiz yok.');
-      if (s.role === 'student' && hw.done) throw new Error('Bu ödeve artık fotoğraf eklenemez (ödev "yapıldı" olarak işaretlenmiş).');
-      const list = (db.homework_photos ||= []);
-      if (list.filter((p) => p.homework_id === hw.id).length >= MAX_PHOTOS) throw new Error(`Bir ödeve en fazla ${MAX_PHOTOS} fotoğraf yüklenebilir`);
-      const r = { id: uid(), homework_id: hw.id, student_id: hw.student_id, bytes: image.length, created_at: new Date().toISOString() };
-      list.push(r); pics.set(r.id, { image, thumb }); write(db);
-      return { ...r };
-    },
-    async removePhoto(id) {
-      const s = session();
-      const p = (db.homework_photos || []).find((x) => x.id === id);
-      const hw = p && db.homework.find((x) => x.id === p.homework_id);
-      if (!p) throw new Error('Fotoğraf bulunamadı.');
-      if (s.role !== 'teacher' && (s.role !== 'student' || p.student_id !== s.student_id || hw?.done)) throw new Error('Bu fotoğraf silinemez (ödev "yapıldı" olarak işaretlenmiş).');
-      db.homework_photos = db.homework_photos.filter((x) => x.id !== id); pics.delete(id); write(db);
-    },
-    photoAccess(p) {
-      const s = session();
-      if (!p || !s) return false;
-      return s.role === 'teacher' || (s.role === 'student' ? p.student_id === s.student_id : myIds(s).includes(p.student_id));
-    },
-    async photoThumbs(homeworkId) {
-      return (db.homework_photos || []).filter((p) => p.homework_id === homeworkId && store.photoAccess(p))
-        .sort((a, b) => a.created_at.localeCompare(b.created_at))
-        .map((p) => ({ id: p.id, created_at: p.created_at, thumb: pics.get(p.id)?.thumb || '' }));
-    },
-    async photoImage(id) {
-      const p = (db.homework_photos || []).find((x) => x.id === id);
-      if (!store.photoAccess(p)) throw new Error('Bu fotoğrafa erişiminiz yok.');
-      const img = pics.get(id)?.image;
-      if (!img) throw new Error('Deneme modunda fotoğraflar yalnız yüklendiği oturumda görünür.');
-      return img;
-    },
-    async removePhotosBefore(iso) {
-      const old = (db.homework_photos || []).filter((p) => p.created_at < iso);
-      db.homework_photos = (db.homework_photos || []).filter((p) => p.created_at >= iso);
-      old.forEach((p) => pics.delete(p.id)); write(db);
-      return old.length;
-    },
     async update(table, id, patch) {
       const r = db[table].find((x) => x.id === id);
       if (!r) throw new Error('Kayıt bulunamadı.');
@@ -175,8 +129,6 @@ export function createLocalStore() {
     },
     async remove(table, id) {
       db[table] = (db[table] || []).filter((x) => x.id !== id);
-      // Supabase'teki "on delete cascade" gibi: ödev/öğrenci silinince fotoğrafları da gider
-      if (table === 'homework' || table === 'students') db.homework_photos = (db.homework_photos || []).filter((p) => (table === 'homework' ? p.homework_id : p.student_id) !== id);
       write(db);
     },
     async upsertSettings(patch) {
@@ -225,6 +177,45 @@ export function createLocalStore() {
       for (const a of olds) dropKid(a, studentId);
       write(db);
     },
+    // Supabase'teki submit_homework kurallarının aynısı
+    async submitHomework(id, items) {
+      const s = session();
+      const h = db.homework.find((x) => x.id === id);
+      if (!h || s.role !== 'student' || h.student_id !== s.student_id) throw new Error('Bu ödeve erişiminiz yok');
+      if (h.done) return h;
+      if (!Array.isArray(items) || items.length !== h.items.length) throw new Error('Her ödev kalemi için seçim yapılmalı');
+      for (const i of items) {
+        if (!['done', 'partial', 'none'].includes(i.status)) throw new Error('Her ödev kalemi için yaptım, eksik yaptım ya da yapmadım seçilmeli');
+        if (typeof i.parent_ok !== 'boolean') throw new Error('Her ödev kalemi için velinin kontrol etmesi sorusu cevaplanmalı');
+      }
+      h.items = h.items.map((x, k) => ({ ...x, status: items[k].status, parent_ok: items[k].parent_ok }));
+      Object.assign(h, { done: true, done_at: new Date().toISOString(), seen_done: false, sent_done: false });
+      write(db); return h;
+    },
+    async changeOwnPassword(oldPw, newPw) {
+      const s = session();
+      const acc = db.accounts.find((a) => a.id === s.user_id);
+      if (!acc || acc.pw !== (await hash(oldPw))) throw new Error('Eski şifre hatalı.');
+      acc.pw = await hash(newPw);
+      for (const l of db.logins || []) {
+        if (s.role === 'student' && l.student_id === acc.student_id) l.student_pw = '';
+        if (s.role === 'parent' && kidsOf(acc).includes(l.student_id)) l.parent_pw = '';
+      }
+      write(db);
+    },
+    async renameAccount(oldUsername, newUsername) {
+      const acc = db.accounts.find((a) => a.username === oldUsername && a.role !== 'teacher');
+      if (!acc) throw new Error('Hesap bulunamadı');
+      if (oldUsername === newUsername) return;
+      if (!/^[a-z0-9][a-z0-9._]{2,29}$/.test(newUsername)) throw new Error('Kullanıcı adı 3-30 karakter olmalı (harf, rakam, nokta, alt çizgi)');
+      if (db.accounts.some((a) => a.username === newUsername)) throw new Error('Bu kullanıcı adı zaten kullanılıyor');
+      acc.username = newUsername;
+      for (const st of db.students) {
+        if (st.student_username === oldUsername) st.student_username = newUsername;
+        if (st.parent_username === oldUsername) st.parent_username = newUsername;
+      }
+      write(db);
+    },
     async setHomeworkDone(id, done) {
       const s = session();
       const h = db.homework.find((x) => x.id === id);
@@ -232,7 +223,6 @@ export function createLocalStore() {
       if (s.role === 'parent') throw new Error('Ödevi yalnızca öğrenci işaretleyebilir.');
       if (s.role === 'student' && !done) throw new Error('Yapıldı olarak işaretlenen ödev geri alınamaz.');
       if (s.role === 'student' && h.done) return h; // ikinci basış tarihi değiştirmez
-      if (s.role === 'student' && !(db.homework_photos || []).some((p) => p.homework_id === id)) throw new Error('Önce ödevinin fotoğrafını yükle (en az 1 fotoğraf)');
       Object.assign(h, { done, done_at: done ? new Date().toISOString() : null, seen_done: !done ? true : false, sent_done: false });
       write(db); return h;
     },

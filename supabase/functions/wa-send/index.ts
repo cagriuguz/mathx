@@ -150,25 +150,48 @@ function pagesText(pages) {
 }
 const WA_TEMPLATES = {
 	given: {
-		name: "mathx_odev_verildi",
-		body: "Sayın veli, öğrencinizin {{1}} ödevi verilmiştir. Son bitirme tarihi: {{2}}."
+		name: "mathx_odev_verildi_v2",
+		body: "Sayın veli, {{1}} ödevi verilmiştir. Son bitirme tarihi: {{2}}."
+	},
+	givenSibling: {
+		name: "mathx_odev_verildi_kardes",
+		body: "Sayın veli, {{1}} isimli öğrencinizin {{2}} ödevi verilmiştir. Son bitirme tarihi: {{3}}."
 	},
 	givenStudent: {
-		name: "mathx_odev_verildi_ogrenci",
-		body: "Merhaba, {{1}} ödevin verildi. Son bitirme tarihi: {{2}}. Kolay gelsin."
+		name: "mathx_odev_verildi_ogrenci_v2",
+		body: "Merhaba, {{1}} ödevin verilmişti. Son bitirme tarihi: {{2}}. Kolay gelsin."
 	},
 	done: {
-		name: "mathx_odev_yapildi",
-		body: "Sayın veli, {{1}} isimli öğrenciniz {{2}} ödevini yapmıştır."
+		name: "mathx_odev_bildirimi",
+		body: "Sayın veli, {{1}} isimli öğrenciniz ödev durumunu bildirdi: {{2}}."
 	}
 };
 function homeworkGivenParams(items, dueDate) {
 	return [items.filter((i) => String(i.pages || "").trim()).map((i) => `${ablative(i.book_name)} ${pagesText(i.pages)}`).join(", "), fmtDate(dueDate)];
 }
+const DONE_WORD = {
+	done: "yaptı",
+	partial: "eksik yaptı",
+	none: "yapmadı"
+};
+/** "Karekök 7 (12-20. sayfalar) yaptı; Limit (45. sayfa) eksik yaptı" (şablon parametresinde satır sonu olmaz) */
 function homeworkDoneParams(studentName, items) {
-	const parts = items.filter((i) => String(i.pages || "").trim()).map((i) => `${i.book_name} (${pagesText(i.pages)})`);
-	const word = parts.length > 1 ? "kitaplarındaki" : "kitabındaki";
-	return [studentName, `${parts.join(", ")} ${word}`];
+	return [studentName, items.filter((i) => String(i.pages || "").trim()).map((i) => `${i.book_name} (${pagesText(i.pages)}) ${DONE_WORD[i.status] || DONE_WORD.done}`).join("; ")];
+}
+/** Veliye giden "ödev verildi" şablonu ve değerleri; sibling = bu veli birden çok çocuğun velisi */
+function parentGiven(items, dueDate, studentName, sibling) {
+	const [books, due] = homeworkGivenParams(items, dueDate);
+	return sibling ? {
+		template: WA_TEMPLATES.givenSibling,
+		params: [
+			studentName,
+			books,
+			due
+		]
+	} : {
+		template: WA_TEMPLATES.given,
+		params: [books, due]
+	};
 }
 /** Türkiye numarası → 90XXXXXXXXXX */
 function normalizePhone(phone) {
@@ -184,10 +207,16 @@ const isValidPhone = (phone) => /^905\d{9}$/.test(normalizePhone(phone));
 const GRAPH_URL = "https://graph.facebook.com/v23.0";
 /**
 * Hangi şablon kime gidecek?  Dönüş: { skip } | { error, status } | { sends: [{ to, template, params }], flag, sentField }
-* given: öğretmen ödevi kaydedince → veliye veli şablonu, öğrenciye öğrenci şablonu.
-* done: öğrenci "yaptım" deyince → öğretmen + veli.
+* given: öğretmen ödevi kaydedince → h.wa_to'ya göre: 'both' (veli + öğrenci, varsayılan) | 'parent' | 'student'.
+*   Veli şablonu kardeşi olan velide öğrenci adını yazar (siblings = aynı veli hesabını kullanan diğer öğrenci sayısı).
+* done: öğrenci ödev durumunu bildirince → öğretmen + veli.
 */
-function planHomeworkMessage({ kind, profile, homework: h, student: s, settings }) {
+const WA_RECIPIENTS = {
+	both: "İkisine birden",
+	parent: "Yalnız veliye",
+	student: "Yalnız öğrenciye"
+};
+function planHomeworkMessage({ kind, profile, homework: h, student: s, settings, siblings = 0 }) {
 	if (!profile) return {
 		error: "Oturum yok",
 		status: 401
@@ -207,17 +236,21 @@ function planHomeworkMessage({ kind, profile, homework: h, student: s, settings 
 			status: 403
 		};
 		if (h.wa_given_at) return { skip: "already" };
-		const params = homeworkGivenParams(h.items, h.due_date);
+		const to = h.wa_to in WA_RECIPIENTS ? h.wa_to : "both";
+		const par = parentGiven(h.items, h.due_date, s.name, siblings > 0);
+		const sends = [];
+		if (to !== "student") sends.push({
+			to: s.parent_phone,
+			template: par.template,
+			params: par.params
+		});
+		if (to !== "parent") sends.push({
+			to: s.phone,
+			template: WA_TEMPLATES.givenStudent,
+			params: homeworkGivenParams(h.items, h.due_date)
+		});
 		plan = {
-			sends: [{
-				to: s.parent_phone,
-				template: WA_TEMPLATES.given,
-				params
-			}, {
-				to: s.phone,
-				template: WA_TEMPLATES.givenStudent,
-				params
-			}],
+			sends,
 			flag: "wa_given_at",
 			sentField: "sent_given"
 		};
@@ -359,13 +392,19 @@ Deno.serve(async (req) => {
 			});
 		}
 		const { data: homework } = await admin.from("homework").select("*").eq("id", homework_id).maybeSingle();
-		const { data: student } = homework ? await admin.from("students").select("name, phone, parent_phone").eq("id", homework.student_id).maybeSingle() : { data: null };
+		const { data: student } = homework ? await admin.from("students").select("name, phone, parent_phone, parent_username").eq("id", homework.student_id).maybeSingle() : { data: null };
+		let siblings = 0;
+		if (homework && student?.parent_username) {
+			const { data: sibs } = await admin.from("students").select("id").eq("parent_username", student.parent_username).neq("id", homework.student_id);
+			siblings = sibs?.length || 0;
+		}
 		const plan = planHomeworkMessage({
 			kind,
 			profile,
 			homework,
 			student,
-			settings
+			settings,
+			siblings
 		});
 		if (plan.skip) return json({
 			ok: false,

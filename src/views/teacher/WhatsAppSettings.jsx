@@ -47,7 +47,7 @@ export function WhatsAppSettings() {
       {mode === 'manual' ? (
         <div class="hint">Mesaj hazır gelir, WhatsApp açılır, Gönder'e siz basarsınız. Ücretsizdir. Öğrenci "yaptım" deyince panelde bildirim görürsünüz.</div>
       ) : ready ? (
-        <div class="hint">Açık ✓ Ödevi kaydettiğiniz an veliye ve öğrenciye, öğrenci "yaptım" dediği an size ve veliye mesaj kendiliğinden gider.</div>
+        <div class="hint">Açık ✓ Ödevi kaydettiğiniz an (ödev verirken seçtiğiniz gibi: ikisine birden, yalnız veliye ya da yalnız öğrenciye), öğrenci ödev durumunu bildirdiği an size ve veliye mesaj kendiliğinden gider.</div>
       ) : (
         <div class="warn">
           <b>Otomatik mesaj için WhatsApp Business numaranızı girin ve hesabınızı açın.</b> Nasıl yapılacağı için <b>?</b> işaretine dokunun. Tanımlanana kadar mesajlar elle gönderilir; programın geri kalanı normal çalışır.
@@ -124,10 +124,11 @@ export function WaGuide({ onClose }) {
           <li><b>Uygulama:</b> <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener">developers.facebook.com/apps</a> → "Uygulama oluştur". Kullanım amacı olarak <b>"WhatsApp ile müşterilerinizle bağlantı kurun"</b> seçeneğini seçin. İşletme portföyü olarak 1. adımda açtığınızı seçin.</li>
           <li><b>Numarayı ekleyin:</b> Uygulamada WhatsApp → <b>API Kurulumu</b> → "Telefon numarası ekle". Görünen ad yazın; veliler mesajı bu adla görür (ör. "Ayşe Öğretmen Matematik"). Yeni hattınızın numarasını girin ve SMS ile gelen kodu yazın.</li>
           <li><b>Ödeme yöntemi:</b> İşletme ayarları → Hesaplar → WhatsApp hesapları → <b>Ödeme ayarları</b> → kartınızı ekleyin.</li>
-          <li><b>Mesaj şablonları:</b> <a href="https://business.facebook.com/wa/manage/message-templates/" target="_blank" rel="noopener">WhatsApp Yöneticisi → Mesaj şablonları</a> → "Şablon oluştur". Kategori olarak <b>Yardımcı program (Utility)</b>, dil olarak <b>Türkçe</b> seçin. Aşağıdaki üç şablonu adı ve metni <b>birebir aynı</b> olacak şekilde girin. Onay genelde birkaç dakika, en fazla 24 saat sürer.
+          <li><b>Mesaj şablonları:</b> <a href="https://business.facebook.com/wa/manage/message-templates/" target="_blank" rel="noopener">WhatsApp Yöneticisi → Mesaj şablonları</a> → "Şablon oluştur". Kategori olarak <b>Yardımcı program (Utility)</b>, dil olarak <b>Türkçe</b> seçin. Aşağıdaki dört şablonu adı ve metni <b>birebir aynı</b> olacak şekilde girin. Onay genelde birkaç dakika, en fazla 24 saat sürer.
             <Tpl t={WA_TEMPLATES.given} sample="{{1}} = Karekök 7'den 12-20. sayfalar · {{2}} = 3 Ekim 2026" />
+            <Tpl t={WA_TEMPLATES.givenSibling} sample="{{1}} = Ali Yılmaz · {{2}} = Karekök 7'den 12-20. sayfalar · {{3}} = 3 Ekim 2026" />
             <Tpl t={WA_TEMPLATES.givenStudent} sample="{{1}} = Karekök 7'den 12-20. sayfalar · {{2}} = 3 Ekim 2026" />
-            <Tpl t={WA_TEMPLATES.done} sample="{{1}} = Ali Yılmaz · {{2}} = Karekök 7 (12-20. sayfalar) kitabındaki" />
+            <Tpl t={WA_TEMPLATES.done} sample="{{1}} = Ali Yılmaz · {{2}} = Karekök 7 (12-20. sayfalar) yaptı; Limit (5. sayfa) eksik yaptı" />
           </li>
           <li><b>Kalıcı erişim anahtarı:</b> İşletme ayarları → Kullanıcılar → <b>Sistem kullanıcıları</b> → "Ekle" (rol: Yönetici). Sonra "Varlık ata" deyin: uygulamanıza ve WhatsApp hesabınıza <b>tam yetki</b> verin. "Belirteç oluştur" deyin: uygulamanızı seçin, süre olarak <b>"Asla sona ermez"</b> seçin, izin olarak <b>whatsapp_business_messaging</b> ve <b>whatsapp_business_management</b> işaretleyin. Çıkan uzun anahtarı kopyalayın. Bu anahtar bir şifre gibidir, kimseyle paylaşmayın.</li>
           <li><b>MathX'e tanıtın:</b> Ayarlar → WhatsApp mesajları → <b>Otomatik</b>. Numaranızı, "Phone number ID" değerini (API Kurulumu sayfasında yazar) ve anahtarı girin, Kaydet'e basın. Yukarıya kendi telefonunuzu da yazın. Ardından <b>"Deneme mesajı gönder"</b>e basın; telefonunuza İngilizce bir "Hello World" mesajı gelirse kurulum tamamdır.</li>

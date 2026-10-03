@@ -1,8 +1,7 @@
 import { useState } from 'preact/hooks';
 import { useApp, useAction, Sheet, Field, Seg, Icon } from '../../ui.jsx';
 import { PLAN_TYPES } from '../../core/billing.js';
-import { localNow, addDays } from '../../core/dates.js';
-import { photoUsage, fmtMB } from '../../core/photos.js';
+import { localNow } from '../../core/dates.js';
 import { WhatsAppSettings } from './WhatsAppSettings.jsx';
 
 export function Settings({ onClose }) {
@@ -63,7 +62,6 @@ export function Settings({ onClose }) {
           <div class="section-title" style="font-size:18px">Görünüm</div>
           <Seg options={[['auto', 'Otomatik'], ['light', 'Açık'], ['dark', 'Koyu']]} value={theme} onChange={applyTheme} />
         </div>
-        <PhotoStorage />
         <div class="stack">
           <div class="section-title" style="font-size:18px">Yedek</div>
           <div class="hint">{store.mode === 'demo' ? 'Deneme modundasınız: veriler yalnızca bu cihazda.' : 'Veriler çevrimiçi veritabanında; tüm cihazlar eşit.'} Yedek dosyası tüm kayıtları içerir.</div>
@@ -73,26 +71,5 @@ export function Settings({ onClose }) {
         <button class="btn" onClick={logout}><Icon name="logout" /> Çıkış yap</button>
       </div>
     </Sheet>
-  );
-}
-
-// Ödev fotoğrafları yer kaplar (ücretsiz Supabase veritabanı 500 MB). Eski fotoğrafları YALNIZ öğretmen,
-// onay vererek siler; ödev kaydı ve "yapıldı" bilgisi silinmez, yalnız fotoğrafları gider.
-const PHOTO_KEEP_DAYS = 60;
-function PhotoStorage() {
-  const { store, data, reload, now } = useApp();
-  const [run, busy] = useAction();
-  const cutoff = addDays(now.date, -PHOTO_KEEP_DAYS);
-  const u = photoUsage(data.homework_photos, cutoff);
-  const clean = () => {
-    if (!confirm(`${PHOTO_KEEP_DAYS} günden eski ${u.oldCount} ödev fotoğrafı kalıcı olarak silinsin mi?\n\nÖdev kayıtları ve "yapıldı" bilgisi SİLİNMEZ, yalnız fotoğraflar gider. Geri alınamaz.`)) return;
-    run(async () => { const n = await store.removePhotosBefore(cutoff); await reload(); return n; }, 'Eski fotoğraflar silindi');
-  };
-  return (
-    <div class="stack">
-      <div class="section-title" style="font-size:18px">Ödev fotoğrafları</div>
-      <div class="hint">{u.count ? `${u.count} fotoğraf, yaklaşık ${fmtMB(u.bytes)} yer kaplıyor.` : 'Henüz yüklenmiş fotoğraf yok.'} Ücretsiz veritabanı alanı 500 MB; dolmaya yaklaşırsa eski fotoğrafları silebilirsiniz.</div>
-      {u.oldCount > 0 && <button class="btn danger ghost" disabled={busy} onClick={clean}>{PHOTO_KEEP_DAYS} günden eski {u.oldCount} fotoğrafı sil ({fmtMB(u.oldBytes)})</button>}
-    </div>
   );
 }

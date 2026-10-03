@@ -9,6 +9,8 @@ import { fmtTL } from '../../core/money.js';
 import { PeriodBody, MissedList } from '../shared.jsx';
 import { HomeworkCard } from '../student/StudentApp.jsx';
 import { ParentVoiceNotes } from '../voice.jsx';
+import { PasswordSheet } from '../password.jsx';
+import { hwState } from '../../core/hwitems.js';
 
 const NAV = [
   { key: 'hw', label: 'Ödevler', icon: 'book' },
@@ -26,6 +28,7 @@ export function ParentApp() {
   const { data, logout, periods } = app;
   const [tab, setTab] = useState('hw');
   const [kidId, setKidId] = useState(readKid);
+  const [pwOpen, setPwOpen] = useState(false);
   const kids = [...data.students].sort((a, b) => a.name.localeCompare(b.name, 'tr'));
   const s = kids.find((k) => k.id === kidId) || kids[0];
   const kidCtx = useMemo(() => {
@@ -36,7 +39,12 @@ export function ParentApp() {
     }
     return { ...app, data: only, periods: periods.filter((p) => p.student_id === s.id) };
   }, [app, data, periods, s]);
-  const logoutBtn = <button class="iconbtn" onClick={logout} aria-label="Çıkış"><Icon name="logout" /></button>;
+  const logoutBtn = (
+    <>
+      <button class="iconbtn" onClick={() => setPwOpen(true)} aria-label="Şifre değiştir"><Icon name="key" /></button>
+      <button class="iconbtn" onClick={logout} aria-label="Çıkış"><Icon name="logout" /></button>
+    </>
+  );
   if (!s) return <Shell title="MathX" actions={logoutBtn}><div class="card"><Empty title="Kayıt bulunamadı">Öğretmeninize başvurun.</Empty></div></Shell>;
   const pick = (id) => { setKidId(id); try { localStorage.setItem(KID_KEY, id); } catch { /* gizli sekme */ } };
   // Menüdeki nokta: HERHANGİ bir çocukta gecikme / dinlenmemiş not varsa
@@ -62,6 +70,7 @@ export function ParentApp() {
         {tab === 'lessons' && <ParentLessons key={s.id} s={s} />}
         {tab === 'pay' && <ParentPayments key={s.id} />}
       </AppCtx.Provider>
+      {pwOpen && <PasswordSheet onClose={() => setPwOpen(false)} />}
     </Shell>
   );
 }
@@ -76,7 +85,8 @@ function ParentHomework() {
       <ParentVoiceNotes />
       <div class="card figures">
         <div class="figure"><div class="v" style="color:var(--madder)">{open}</div><div class="l">Yapılacak</div></div>
-        <div class="figure"><div class="v" style="color:var(--sage)">{list.length - open}</div><div class="l">Yapıldı</div></div>
+        <div class="figure"><div class="v" style="color:var(--sage)">{list.filter((h) => hwState(h) === 'done').length}</div><div class="l">Yapıldı</div></div>
+        <div class="figure"><div class="v">{list.filter((h) => h.done && hwState(h) !== 'done').length}</div><div class="l">Eksik / yapılmadı</div></div>
       </div>
       {list.map((h) => <HomeworkCard key={h.id} h={h} readOnly />)}
     </div>

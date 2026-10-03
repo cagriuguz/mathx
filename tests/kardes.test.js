@@ -62,7 +62,7 @@ async function as(db, uid, fn) {
 }
 const snapshot = async (db) => {
   const out = {};
-  for (const t of TABLES) out[t] = (await db.query(`select to_jsonb(x) j from public.${t} x order by 1::text`)).rows.map((r) => JSON.stringify(r.j)).sort();
+  for (const t of TABLES) out[t] = (await db.query(`select (to_jsonb(x) - 'wa_to') j from public.${t} x order by 1::text`)).rows.map((r) => JSON.stringify(r.j)).sort();
   out.users = (await db.query(`select id::text from auth.users order by 1`)).rows.map((r) => r.id);
   return out;
 };

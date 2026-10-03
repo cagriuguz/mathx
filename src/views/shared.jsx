@@ -1,6 +1,6 @@
 // Birden çok ekranda kullanılan parçalar: ders satırı ("Yapılmadı" + 50 karakter gerekçe), dönem satırı.
 import { useState } from 'preact/hooks';
-import { useApp, useAction, Icon, StatusChip, Sheet, Field } from '../ui.jsx';
+import { useApp, useAction, Icon, StatusChip, Sheet, Field, StudentPicker } from '../ui.jsx';
 import { REASON_MAX, cleanReason, scheduleAt } from '../core/lessons.js';
 import { fmtShort, fmtDate } from '../core/dates.js';
 import { fmtTL, fmtHours, fmtNum } from '../core/money.js';
@@ -165,12 +165,8 @@ export function ExtraLessonSheet({ studentId = '', onClose }) {
   return (
     <Sheet title="Ek ders ekle" onClose={onClose}>
       <div class="stack">
-        <Field label="Öğrenci" required error={errors.student_id}>
-          <select class="input" value={f.student_id} onChange={set('student_id')}>
-            <option value="">Seçin</option>
-            {data.students.map((x) => <option key={x.id} value={x.id}>{x.name}{x.active === false ? ' (pasif)' : ''}</option>)}
-          </select>
-        </Field>
+        <StudentPicker label="Öğrenci *" students={data.students} value={f.student_id} onChange={(id) => setF((o) => ({ ...o, student_id: id }))} extra={(x) => (x.active === false ? ' (pasif)' : '')} />
+        {errors.student_id && <div class="error">{errors.student_id}</div>}
         <Field label="Tarih" required error={errors.date}><input class="input" type="date" value={f.date} onInput={set('date')} /></Field>
         <div class="grid2">
           <Field label="Saat" required error={errors.time}><input class="input" type="time" value={f.time} onInput={set('time')} /></Field>

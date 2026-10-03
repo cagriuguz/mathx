@@ -137,7 +137,12 @@ export function VoicePlayer({ note, onPlay }) {
   const first = () => { if (!played.current) { played.current = true; onPlay?.(); } };
 
   if (!url) return <button class="btn small" disabled={loading} onClick={load}><Icon name="play" /> {loading ? 'Yükleniyor…' : `Dinle (${fmtSec(note.seconds)})`}</button>;
-  return <audio controls autoPlay src={url} onPlay={first} onError={() => toast('Bu telefon sesi açamadı. Başka bir tarayıcıyla deneyin.')} style="width:100%" />;
+  return (
+    <div class="row" style="align-items:center">
+      <audio controls autoPlay src={url} onPlay={first} onError={() => toast('Bu telefon sesi açamadı. Başka bir tarayıcıyla deneyin.')} style="flex:1;min-width:0" />
+      <button type="button" class="btn small ghost" onClick={() => setUrl(null)} aria-label="Oynatıcıyı kapat"><Icon name="x" /></button>
+    </div>
+  );
 }
 
 /** ÖĞRETMEN: öğrenci kartındaki "Veliye sesli not" bölümü */

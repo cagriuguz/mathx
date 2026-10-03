@@ -176,7 +176,7 @@ function broadcast(table, type) {
 
 // ── Sahte Meta (WhatsApp Cloud API) ──────────────────────────────────────
 export const meta = {
-  approved: new Set(['hello_world', 'mathx_odev_verildi', 'mathx_odev_verildi_ogrenci', 'mathx_odev_yapildi']),
+  approved: new Set(['hello_world', 'mathx_odev_verildi_v2', 'mathx_odev_verildi_kardes', 'mathx_odev_verildi_ogrenci_v2', 'mathx_odev_bildirimi']),
   phoneNumberId: '100000000000001', token: 'EAAG-sahte-anahtar', messages: [],
 };
 async function handleMeta(req, res, path) {
@@ -243,6 +243,12 @@ const server = http.createServer(async (req, res) => {
     if (path === '/auth/v1/user') {
       const c = verify((req.headers.authorization || '').replace(/^Bearer\s+/i, ''));
       if (!c) return send(res, 401, { code: 'bad_jwt', msg: 'invalid JWT' });
+      if (req.method === 'PUT') { // updateUser({ password })
+        const { password } = await readBody(req);
+        if (!password || password.length < 6) return send(res, 422, { code: 'weak_password', msg: 'Password should be at least 6 characters.' });
+        await serial(() => db.query(`update auth.users set encrypted_password = extensions.crypt($2, extensions.gen_salt('bf')) where id = $1`, [c.sub, password]));
+        note(`ŞİFRE DEĞİŞTİ ${c.sub}`);
+      }
       const r = await serial(() => db.query('select id, email, created_at from auth.users where id=$1', [c.sub]));
       if (!r.rows[0]) return send(res, 403, { code: 'user_not_found', msg: 'User from sub claim in JWT does not exist' });
       return send(res, 200, session(r.rows[0]).user);
@@ -267,7 +273,7 @@ const server = http.createServer(async (req, res) => {
       const names = Object.keys(args);
       const sql = `select to_json(public.${ident(m[1])}(${names.map((n, i) => `${ident(n)} => $${i + 1}`).join(', ')})) as v`;
       const r = await asUser(w, (tx) => tx.query(sql, names.map((n) => (args[n] !== null && typeof args[n] === 'object' ? JSON.stringify(args[n]) : args[n]))));
-      if (['set_homework_done', 'delete_accounts_for', 'claim_teacher', 'admin_set_password', 'set_wa_config'].includes(m[1])) broadcast('*', 'UPDATE');
+      if (['set_homework_done', 'submit_homework', 'rename_account', 'password_changed', 'delete_accounts_for', 'claim_teacher', 'admin_set_password', 'set_wa_config'].includes(m[1])) broadcast('*', 'UPDATE');
       note(`RPC ${m[1]} (${w.uid ? 'kullanıcı' : w.service ? 'servis' : 'anon'})`);
       return send(res, 200, r.rows[0].v);
     }

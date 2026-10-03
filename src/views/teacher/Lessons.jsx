@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'preact/hooks';
-import { useApp, Tabs, Icon, Empty, Field } from '../../ui.jsx';
+import { useApp, Tabs, Icon, Empty, Field, StudentPicker } from '../../ui.jsx';
 import { lessonsFor, decorateLessons, notHeldReport, lessonSummary } from '../../core/lessons.js';
 import { addDays, weekStart, fmtShort, fmtDate, TR_DAYS, monthKey, monthFirst, monthLast, dow } from '../../core/dates.js';
 import { LessonRow, ExtraLessonSheet } from '../shared.jsx';
 import { studentPeriods, studentLedger, PLAN_TYPES, STATUS_LABEL } from '../../core/billing.js';
 import { fmtTL, fmtHours } from '../../core/money.js';
+
+const passive = (s) => (s.active === false ? ' (pasif)' : '');
 
 export function Lessons() {
   const [tab, setTab] = useState('week');
@@ -45,11 +47,8 @@ function Week() {
         </div>
         <button class="btn small" aria-label="Sonraki hafta" onClick={() => setMonday(addDays(monday, 7))}><Icon name="chevron" /></button>
       </div>
-      <div class="row">
-        <select class="input grow" value={who} onChange={(e) => setWho(e.currentTarget.value)} aria-label="Öğrenci">
-          <option value="">Tüm öğrenciler</option>
-          {data.students.map((s) => <option key={s.id} value={s.id}>{s.name}{s.active === false ? ' (pasif)' : ''}</option>)}
-        </select>
+      <div class="row" style="align-items:flex-end">
+        <div class="grow"><StudentPicker students={data.students} value={who} onChange={setWho} allLabel="Tüm öğrenciler" extra={passive} /></div>
         {monday !== weekStart(now.date) && <button class="btn" onClick={() => setMonday(weekStart(now.date))}>Bu hafta</button>}
       </div>
       {data.students.length > 0 && <button class="btn" onClick={() => setAdding(true)}><Icon name="plus" /> Ek ders ekle</button>}
@@ -95,12 +94,7 @@ function Report() {
           <Field label="Başlangıç"><input class="input" type="date" value={from} onInput={(e) => setFrom(e.currentTarget.value)} /></Field>
           <Field label="Bitiş"><input class="input" type="date" value={to} onInput={(e) => setTo(e.currentTarget.value)} /></Field>
         </div>
-        <Field label="Öğrenci">
-          <select class="input" value={who} onChange={(e) => setWho(e.currentTarget.value)}>
-            <option value="">Tüm öğrenciler</option>
-            {data.students.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
-        </Field>
+        <StudentPicker label="Öğrenci" students={data.students} value={who} onChange={setWho} allLabel="Tüm öğrenciler" />
         {err && <div class="error">{err}</div>}
         <button class="btn primary" onClick={make}><Icon name="report" /> Raporla</button>
       </div>
@@ -162,9 +156,7 @@ function StudentLedger() {
   if (!data.students.length) return <Empty title="Henüz öğrenci yok">Öğrenciler bölümünden ekleyebilirsiniz.</Empty>;
   return (
     <div class="stack">
-      <select class="input" value={who} onChange={(e) => { setWho(e.currentTarget.value); setOpen(0); }} aria-label="Öğrenci">
-        {data.students.map((x) => <option key={x.id} value={x.id}>{x.name}{x.active === false ? ' (pasif)' : ''}</option>)}
-      </select>
+      <StudentPicker students={data.students} value={who} onChange={(id) => { setWho(id); setOpen(0); }} extra={passive} />
       {led && (
         <div class="card">
           <div class="figures" style="box-shadow:none">

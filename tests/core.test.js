@@ -124,9 +124,13 @@ test('Türkçe ekler', () => {
 
 test('mesaj kalıpları', () => {
   const items = [{ book_name: 'Karekök 7', pages: '12-20' }, { book_name: 'Limit', pages: '5' }, { book_name: 'Boş', pages: '' }];
-  assert.equal(msgHomeworkGiven(items, '2026-10-03'), "Sayın veli, öğrencinizin Karekök 7'den 12-20. sayfalar, Limit'ten 5. sayfa ödevi verilmiştir. Son bitirme tarihi: 3 Ekim 2026.");
-  assert.equal(msgHomeworkDone('Ali Yılmaz', items), 'Sayın veli, Ali Yılmaz isimli öğrenciniz Karekök 7 (12-20. sayfalar), Limit (5. sayfa) kitaplarındaki ödevini yapmıştır.');
-  assert.equal(msgHomeworkDone('Ali', items.slice(1, 2)), 'Sayın veli, Ali isimli öğrenciniz Limit (5. sayfa) kitabındaki ödevini yapmıştır.');
+  assert.equal(msgHomeworkGiven(items, '2026-10-03'), "Sayın veli, Karekök 7'den 12-20. sayfalar, Limit'ten 5. sayfa ödevi verilmiştir. Son bitirme tarihi: 3 Ekim 2026.");
+  // Kardeşi olan velide hangi çocuğun ödevi olduğu adla yazılır
+  assert.equal(msgHomeworkGiven(items, '2026-10-03', { studentName: 'Ali Yılmaz', sibling: true }), "Sayın veli, Ali Yılmaz isimli öğrencinizin Karekök 7'den 12-20. sayfalar, Limit'ten 5. sayfa ödevi verilmiştir. Son bitirme tarihi: 3 Ekim 2026.");
+  // Her kalemin durumu ayrı yazılır; durumu olmayan eski kayıt "yaptı" sayılır
+  assert.equal(msgHomeworkDone('Ali Yılmaz', items), 'Sayın veli, Ali Yılmaz isimli öğrenciniz ödev durumunu bildirdi: Karekök 7 (12-20. sayfalar) yaptı; Limit (5. sayfa) yaptı.');
+  const mixed = [{ ...items[0], status: 'partial' }, { ...items[1], status: 'none' }];
+  assert.equal(msgHomeworkDone('Ali', mixed), 'Sayın veli, Ali isimli öğrenciniz ödev durumunu bildirdi: Karekök 7 (12-20. sayfalar) eksik yaptı; Limit (5. sayfa) yapmadı.');
   assert.equal(msgPaymentLate({ due: '2026-09-26' }), "Sayın veli, 26.09.2026'da dolan ödeme henüz görünmüyor, hatırlatmak istedim.");
   assert.equal(msgPackageFull({ type: '4weekly', amount: 350000, remaining: 350000 }), 'Sayın veli, öğrencimizin 4 haftalık paketi dolmuştur. Ödeme tutarı: 3.500 TL. Bilginize.');
   assert.equal(msgPaymentReceived(125050), 'Sayın veli, 1.250,50 TL ödemeniz alınmıştır, teşekkür ederim.');

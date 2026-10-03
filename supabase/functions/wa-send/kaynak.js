@@ -52,8 +52,14 @@ Deno.serve(async (req) => {
     }
 
     const { data: homework } = await admin.from('homework').select('*').eq('id', homework_id).maybeSingle();
-    const { data: student } = homework ? await admin.from('students').select('name, phone, parent_phone').eq('id', homework.student_id).maybeSingle() : { data: null };
-    const plan = planHomeworkMessage({ kind, profile, homework, student, settings });
+    const { data: student } = homework ? await admin.from('students').select('name, phone, parent_phone, parent_username').eq('id', homework.student_id).maybeSingle() : { data: null };
+    // Kardeş: aynı veli hesabını kullanan başka öğrenci var mı (veli mesajına öğrenci adı yazılır)
+    let siblings = 0;
+    if (homework && student?.parent_username) {
+      const { data: sibs } = await admin.from('students').select('id').eq('parent_username', student.parent_username).neq('id', homework.student_id);
+      siblings = sibs?.length || 0;
+    }
+    const plan = planHomeworkMessage({ kind, profile, homework, student, settings, siblings });
     if (plan.skip) return json({ ok: false, skipped: plan.skip });
     if (plan.error) return json({ ok: false, error: plan.error }, plan.status || 400);
     if (!ready) return json({ ok: false, error: 'WhatsApp Business tanımlı değil; mesaj elle gönderilmeli.' });

@@ -63,10 +63,13 @@ export function pagesText(pages) {
 // Otomatik gönderim (WhatsApp Business) Meta'da onaylı ŞABLON ister: metin sabit, yalnız {{1}}, {{2}} değişir.
 // Elle gönderilen mesaj da AYNI şablondan üretilir; böylece iki yol birebir aynı metni yollar.
 export const WA_TEMPLATES = {
-  given: { name: 'mathx_odev_verildi', body: 'Sayın veli, öğrencinizin {{1}} ödevi verilmiştir. Son bitirme tarihi: {{2}}.' },
-  // Öğrenciye giden ödev mesajı ayrı şablon: "Sayın veli" yerine öğrenciye hitap eder
-  givenStudent: { name: 'mathx_odev_verildi_ogrenci', body: 'Merhaba, {{1}} ödevin verildi. Son bitirme tarihi: {{2}}. Kolay gelsin.' },
-  done: { name: 'mathx_odev_yapildi', body: 'Sayın veli, {{1}} isimli öğrenciniz {{2}} ödevini yapmıştır.' },
+  // Veliye: hitaptan sonra doğrudan ödev ("... ödevi verilmiştir"). Kardeşlerde hangi çocuğun ödevi olduğu adla yazılır.
+  given: { name: 'mathx_odev_verildi_v2', body: 'Sayın veli, {{1}} ödevi verilmiştir. Son bitirme tarihi: {{2}}.' },
+  givenSibling: { name: 'mathx_odev_verildi_kardes', body: 'Sayın veli, {{1}} isimli öğrencinizin {{2}} ödevi verilmiştir. Son bitirme tarihi: {{3}}.' },
+  // Öğrenciye: "... ödevin verilmişti"
+  givenStudent: { name: 'mathx_odev_verildi_ogrenci_v2', body: 'Merhaba, {{1}} ödevin verilmişti. Son bitirme tarihi: {{2}}. Kolay gelsin.' },
+  // Öğrenci her kalemi ayrı işaretler; durumlar {{2}} içinde yazılır
+  done: { name: 'mathx_odev_bildirimi', body: 'Sayın veli, {{1}} isimli öğrenciniz ödev durumunu bildirdi: {{2}}.' },
 };
 export const fillTemplate = (body, params) => body.replace(/\{\{(\d+)\}\}/g, (_, i) => params[i - 1]);
 
@@ -75,19 +78,33 @@ export function homeworkGivenParams(items, dueDate) {
   return [parts.join(', '), fmtDate(dueDate)];
 }
 
+const DONE_WORD = { done: 'yaptı', partial: 'eksik yaptı', none: 'yapmadı' };
+
+/** "Karekök 7 (12-20. sayfalar) yaptı; Limit (45. sayfa) eksik yaptı" (şablon parametresinde satır sonu olmaz) */
 export function homeworkDoneParams(studentName, items) {
-  const parts = items.filter((i) => String(i.pages || '').trim()).map((i) => `${i.book_name} (${pagesText(i.pages)})`);
-  const word = parts.length > 1 ? 'kitaplarındaki' : 'kitabındaki';
-  return [studentName, `${parts.join(', ')} ${word}`];
+  const parts = items.filter((i) => String(i.pages || '').trim())
+    .map((i) => `${i.book_name} (${pagesText(i.pages)}) ${DONE_WORD[i.status] || DONE_WORD.done}`);
+  return [studentName, parts.join('; ')];
 }
 
-/** 1) Ödev verildi (öğrenci adı yazılmaz) */
-export const msgHomeworkGiven = (items, dueDate) => fillTemplate(WA_TEMPLATES.given.body, homeworkGivenParams(items, dueDate));
+/** Veliye giden "ödev verildi" şablonu ve değerleri; sibling = bu veli birden çok çocuğun velisi */
+export function parentGiven(items, dueDate, studentName, sibling) {
+  const [books, due] = homeworkGivenParams(items, dueDate);
+  return sibling
+    ? { template: WA_TEMPLATES.givenSibling, params: [studentName, books, due] }
+    : { template: WA_TEMPLATES.given, params: [books, due] };
+}
 
-/** 1b) Ödev verildi — öğrenciye (aynı bilgiler, öğrenciye hitapla) */
+/** 1) Ödev verildi — veliye (kardeşlerde öğrenci adı yazılır) */
+export const msgHomeworkGiven = (items, dueDate, { studentName = '', sibling = false } = {}) => {
+  const m = parentGiven(items, dueDate, studentName, sibling && !!studentName);
+  return fillTemplate(m.template.body, m.params);
+};
+
+/** 1b) Ödev verildi — öğrenciye */
 export const msgHomeworkGivenStudent = (items, dueDate) => fillTemplate(WA_TEMPLATES.givenStudent.body, homeworkGivenParams(items, dueDate));
 
-/** 5) Ödev yapıldı (madde 8) — veliye ve öğretmene */
+/** 5) Ödev durumu bildirildi — veliye ve öğretmene */
 export const msgHomeworkDone = (studentName, items) => fillTemplate(WA_TEMPLATES.done.body, homeworkDoneParams(studentName, items));
 
 const PACKAGE_WORD = { weekly: 'haftalık', '4weekly': '4 haftalık', monthly: 'aylık', oneoff: 'ders' };

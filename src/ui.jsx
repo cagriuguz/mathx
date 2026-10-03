@@ -1,5 +1,5 @@
 import { createContext } from 'preact';
-import { useContext, useEffect, useState } from 'preact/hooks';
+import { useContext, useEffect, useMemo, useState } from 'preact/hooks';
 import { waLink, waHref, isIOS, isValidPhone } from './core/messages.js';
 
 export const AppCtx = createContext(null);
@@ -77,6 +77,8 @@ export function Tabs({ tabs, value, onChange }) {
   );
 }
 
+// Pencerenin dışına yanlışlıkla dokunmak/tıklamak pencereyi KAPATMAZ (yazılan bilgiler kaybolmasın);
+// kapatmak için sağ üstteki × düğmesi (ya da Esc) kullanılır.
 export function Sheet({ title, onClose, children }) {
   useEffect(() => {
     const f = (e) => e.key === 'Escape' && onClose();
@@ -86,7 +88,7 @@ export function Sheet({ title, onClose, children }) {
     return () => { window.removeEventListener('keydown', f); document.body.style.overflow = o; };
   }, []);
   return (
-    <div class="sheet-back" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div class="sheet-back">
       <div class="sheet" role="dialog" aria-modal="true" aria-label={title}>
         <div class="grab" />
         <div class="spread" style="margin-bottom:4px">
@@ -94,6 +96,42 @@ export function Sheet({ title, onClose, children }) {
           <button class="btn ghost small" onClick={onClose} aria-label="Kapat"><Icon name="x" /></button>
         </div>
         <div style="margin-top:14px">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+// Arama harfleri: Türkçe büyük/küçük harf, aksan ve ı/i farkı sayılmaz ("sener" → "Şener")
+export const fold = (t) => String(t || '').toLocaleLowerCase('tr').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ı/g, 'i');
+export const matchName = (name, q) => fold(name).includes(fold(q).trim());
+
+/** Öğrenci seçici: adını yazdıkça liste süzülür (select yerine). allLabel verilirse "Tüm öğrenciler" seçeneği olur. */
+export function StudentPicker({ students, value, onChange, label, allLabel, extra }) {
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const sel = students.find((x) => x.id === value);
+  const list = useMemo(() => [...students].filter((x) => matchName(x.name, q)).sort((a, b) => a.name.localeCompare(b.name, 'tr')), [students, q]);
+  const pick = (id) => { onChange(id); setQ(''); setOpen(false); };
+  const text = open ? q : sel ? sel.name : '';
+  const cls = (id) => `picker-item${id === value ? ' on' : ''}`;
+  return (
+    <div class="field picker">
+      {label && <span>{label}</span>}
+      <div class="picker-box">
+        <input class="input" type="text" autocomplete="off" value={text} aria-label={label || 'Öğrenci ara'}
+          placeholder={allLabel || 'Adını yazın ya da listeden seçin'}
+          onFocus={() => { setOpen(true); setQ(''); }} onInput={(e) => { setQ(e.currentTarget.value); setOpen(true); }}
+          onBlur={() => setTimeout(() => setOpen(false), 120)} />
+        {sel && !open && <button type="button" class="picker-x" aria-label="Seçimi kaldır" onClick={() => pick('')}><Icon name="x" size={16} /></button>}
+        {open && (
+          <ul class="picker-list" role="listbox">
+            {allLabel && !q.trim() && <li><button type="button" class={cls('')} onPointerDown={(e) => { e.preventDefault(); pick(''); }}>{allLabel}</button></li>}
+            {list.map((x) => (
+              <li key={x.id}><button type="button" class={cls(x.id)} onPointerDown={(e) => { e.preventDefault(); pick(x.id); }}>{x.name}{extra ? extra(x) : ''}</button></li>
+            ))}
+            {!list.length && <li class="picker-none">Bu adla öğrenci bulunamadı</li>}
+          </ul>
+        )}
       </div>
     </div>
   );
