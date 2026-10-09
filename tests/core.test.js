@@ -124,9 +124,9 @@ test('Türkçe ekler', () => {
 
 test('mesaj kalıpları', () => {
   const items = [{ book_name: 'Karekök 7', pages: '12-20' }, { book_name: 'Limit', pages: '5' }, { book_name: 'Boş', pages: '' }];
-  assert.equal(msgHomeworkGiven(items, '2026-10-03'), "Sayın veli, Karekök 7'den 12-20. sayfalar, Limit'ten 5. sayfa ödevi verilmiştir. Son bitirme tarihi: 3 Ekim 2026.");
+  assert.equal(msgHomeworkGiven(items, '2026-10-03'), "Sayın veli, Karekök 7 12-20 ve Limit 5 ödevi verilmiştir. Son bitirme tarihi: 3 Ekim 2026.");
   // Kardeşi olan velide hangi çocuğun ödevi olduğu adla yazılır
-  assert.equal(msgHomeworkGiven(items, '2026-10-03', { studentName: 'Ali Yılmaz', sibling: true }), "Sayın veli, Ali Yılmaz isimli öğrencinizin Karekök 7'den 12-20. sayfalar, Limit'ten 5. sayfa ödevi verilmiştir. Son bitirme tarihi: 3 Ekim 2026.");
+  assert.equal(msgHomeworkGiven(items, '2026-10-03', { studentName: 'Ali Yılmaz', sibling: true }), "Sayın veli, Ali Yılmaz isimli öğrencinizin Karekök 7 12-20 ve Limit 5 ödevi verilmiştir. Son bitirme tarihi: 3 Ekim 2026.");
   // Her kalemin durumu ayrı yazılır; durumu olmayan eski kayıt "yaptı" sayılır
   assert.equal(msgHomeworkDone('Ali Yılmaz', items), 'Sayın veli, Ali Yılmaz isimli öğrenciniz ödev durumunu bildirdi: Karekök 7 (12-20. sayfalar) yaptı; Limit (5. sayfa) yaptı.');
   const mixed = [{ ...items[0], status: 'partial' }, { ...items[1], status: 'none' }];

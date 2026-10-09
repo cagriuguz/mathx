@@ -74,8 +74,10 @@ export const WA_TEMPLATES = {
 export const fillTemplate = (body, params) => body.replace(/\{\{(\d+)\}\}/g, (_, i) => params[i - 1]);
 
 export function homeworkGivenParams(items, dueDate) {
-  const parts = items.filter((i) => String(i.pages || '').trim()).map((i) => `${ablative(i.book_name)} ${pagesText(i.pages)}`);
-  return [parts.join(', '), fmtDate(dueDate)];
+  // Kitap adı + öğretmenin yazdığı metin aynen: "ACİL 10. SINIF 8. tema ödevi verilmiştir"
+  const parts = items.filter((i) => String(i.pages || '').trim()).map((i) => `${String(i.book_name).trim()} ${String(i.pages).trim()}`);
+  const books = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} ve ${parts[parts.length - 1]}` : parts.join('');
+  return [books, fmtDate(dueDate)];
 }
 
 const DONE_WORD = { done: 'yaptı', partial: 'eksik yaptı', none: 'yapmadı' };

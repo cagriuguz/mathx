@@ -315,11 +315,15 @@ function RangeEarnings() {
   const pick = (k) => { setPreset(k); setRange(presets[k]); };
   const [from, to] = range;
   const bad = !from || !to || from > to;
-  const r = useMemo(() => (bad ? null : rangeEarnings(data, settings, periods, from, to, now)), [data, settings, periods, from, to, now, bad]);
+  const r = useMemo(() => {
+    if (bad) return null;
+    const e = rangeEarnings(data, settings, periods, from, to, now);
+    return { ...e, students: e.students.filter((x) => x.received || x.expected) };
+  }, [data, settings, periods, from, to, now, bad]);
 
   return (
     <>
-      <div class="section-head"><h2 class="section-title">Tarih aralığında kazancım</h2></div>
+      <div class="section-head"><h2 class="section-title">Tarih aralığında gelirim</h2></div>
       <div class="card card-pad stack">
         <Seg cls="four" options={[['week', 'Bu hafta'], ['lastweek', 'Geçen hafta'], ['month', 'Bu ay'], ['lastmonth', 'Geçen ay']]} value={preset} onChange={pick} />
         <div class="grid2">
@@ -330,19 +334,18 @@ function RangeEarnings() {
           <>
             <div class="figures inner">
               <Fig v={r.received ? fmtTL(r.received) : '0 TL'} l={r.received ? '✓ Alınan ödemeler' : 'Gelir yok'} tone={r.received ? 'ok' : ''} s={`${fmtShort(from)} – ${fmtShort(to)}`} />
-              <Fig v={fmtTL(r.earned)} l="Yapılan derslerin kazancı" s={`${fmtHours(r.done_hours)}${r.not_held ? ` · ${r.not_held} yapılmadı` : ''}`} />
-              <Fig v={fmtTL(r.planned)} l="Kalan derslerin kazancı" s={r.planned_hours ? `${fmtHours(r.planned_hours)} daha planlı` : 'planlı ders kalmadı'} />
-              <Fig v={fmtTL(r.expected)} l="Beklenen tahsilat" s={r.expected_remaining ? `vadesi bu aralıkta · ${fmtTL(r.expected_remaining)} ödenmedi` : 'vadesi bu aralıkta'} />
+              <Fig v={fmtTL(r.expected)} l="Beklenen tahsilat" s="ödeme günü bu aralıkta" />
+              <Fig v={fmtTL(r.expected_remaining)} l="Henüz ödenmemiş" s={r.expected_remaining ? 'ödeme günü bu aralıkta' : 'hepsi ödendi'} tone={r.expected_remaining ? 'bad' : ''} />
             </div>
-            <div class="hint">Toplam kazanç (yapılan + kalan dersler): <b>{fmtTL(r.earned + r.planned)}</b>. Kazanç = ders sayısı × o dönemin 1 derslik ücreti; yapılmayan dersler sayılmaz.</div>
+            <div class="hint">Gelir, dersin yapıldığı güne değil <b>ödeme gününe</b> yazılır. Yapılmayan dersler ödeme tutarından düşülmüş halde gösterilir.</div>
             {r.students.length > 0 && (
               <>
                 <button class="btn small ghost" onClick={() => setShowStudents(!showStudents)}>{showStudents ? 'Öğrenci dökümünü gizle' : `Öğrenci bazında göster (${r.students.length})`}</button>
                 {showStudents && (
                   <div class="table-wrap"><table class="t">
-                    <thead><tr><th>Öğrenci</th><th class="n">Yapılan</th><th class="n">Kalan</th><th class="n">Alınan</th></tr></thead>
+                    <thead><tr><th>Öğrenci</th><th class="n">Beklenen</th><th class="n">Alınan</th></tr></thead>
                     <tbody>{r.students.map((x) => (
-                      <tr key={x.student_id}><td>{x.name}{x.hours ? <div class="small muted">{fmtHours(x.hours)}</div> : null}</td><td class="n num">{fmtTL(x.earned)}</td><td class="n num">{fmtTL(x.planned)}</td><td class="n num">{fmtTL(x.received)}</td></tr>
+                      <tr key={x.student_id}><td>{x.name}</td><td class="n num">{fmtTL(x.expected)}</td><td class="n num">{fmtTL(x.received)}</td></tr>
                     ))}</tbody>
                   </table></div>
                 )}

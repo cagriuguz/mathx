@@ -15,7 +15,7 @@ test('ödev verildi → veliye veli şablonu, öğrenciye öğrenci şablonu; me
   assert.deepEqual(p.sends.map((m) => [m.to, m.template.name]), [['905334445566', 'mathx_odev_verildi_v2'], ['905321112233', 'mathx_odev_verildi_ogrenci_v2']]);
   assert.equal(fillTemplate(p.sends[0].template.body, p.sends[0].params), msgHomeworkGiven(items, '2026-10-03'));
   assert.equal(fillTemplate(p.sends[1].template.body, p.sends[1].params), msgHomeworkGivenStudent(items, '2026-10-03'));
-  assert.equal(msgHomeworkGivenStudent(items, '2026-10-03'), "Merhaba, Karekök 7'den 12-20. sayfalar, Limit'ten 5. sayfa ödevin verilmişti. Son bitirme tarihi: 3 Ekim 2026. Kolay gelsin.");
+  assert.equal(msgHomeworkGivenStudent(items, '2026-10-03'), "Merhaba, Karekök 7 12-20 ve Limit 5 ödevin verilmişti. Son bitirme tarihi: 3 Ekim 2026. Kolay gelsin.");
   assert.ok(!/veli/i.test(msgHomeworkGivenStudent(items, '2026-10-03')), 'öğrenci mesajında "veli" geçmez');
 });
 
