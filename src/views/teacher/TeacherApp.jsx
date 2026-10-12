@@ -10,7 +10,7 @@ import { buildNotifications } from '../../core/notify.js';
 import { LessonRow, PeriodBody } from '../shared.jsx';
 import { Lessons } from './Lessons.jsx';
 import { Students } from './Students.jsx';
-import { Homework } from './Homework.jsx';
+import { Homework, LateNotify } from './Homework.jsx';
 import { Money, PaymentSheet } from './Money.jsx';
 import { Settings } from './Settings.jsx';
 import { HomeworkItems } from '../hwitems.jsx';
@@ -138,8 +138,8 @@ function Panel({ go }) {
                 <li key={'l' + h.id} class="stack">
                   <div class="spread"><span class="item-title">{byId.get(h.student_id).name}</span><span class="chip bad">Ödevi gecikti</span></div>
                   <div class="small">{h.items.map((i) => `${i.book_name} (${i.pages})`).join(', ')}</div>
-                  <div class="spread small muted"><span>Son gün {fmtDate(h.due_date)} · {h.days_late} gün geçti</span>
-                    <button class="btn small ghost" onClick={() => go('homework')}>Ödevlere git</button></div>
+                  <div class="small muted">Son gün {fmtDate(h.due_date)} · {h.days_late} gün geçti</div>
+                  <LateNotify h={h} s={byId.get(h.student_id)} />
                 </li>
               ))}
               {notif.latePay.map((p) => {

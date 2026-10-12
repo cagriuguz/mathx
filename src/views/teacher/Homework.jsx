@@ -5,6 +5,7 @@ import { WA_RECIPIENTS } from '../../core/wa.js';
 import { addDays, fmtDate, fmtShort } from '../../core/dates.js';
 import { HomeworkItems, TeacherItemEdit } from '../hwitems.jsx';
 import { hwState, HW_CHIP } from '../../core/hwitems.js';
+import { lateMark, makeLateNote, isPending, isPast, LATE_MARK_LABEL, LATE_MARK_CHIP } from '../../core/latehw.js';
 import { siblingsOf } from './Students.jsx';
 import { studentBooks, unassignedBooks, hasBook, bookSuggestions, cleanBookName } from '../../core/books.js';
 
@@ -12,9 +13,10 @@ export function Homework() {
   const [tab, setTab] = useState('give');
   return (
     <>
-      <Tabs tabs={[['give', 'Ödev ver'], ['track', 'Takip'], ['books', 'Kitaplar']]} value={tab} onChange={setTab} />
+      <Tabs tabs={[['give', 'Ödev ver'], ['track', 'Takip'], ['past', 'Geçmiş'], ['books', 'Kitaplar']]} value={tab} onChange={setTab} />
       {tab === 'give' && <Give />}
       {tab === 'track' && <Track />}
+      {tab === 'past' && <Past />}
       {tab === 'books' && <Books />}
     </>
   );
@@ -140,7 +142,7 @@ function Track() {
   const byId = useMemo(() => new Map(data.students.map((s) => [s.id, s])), [data.students]);
   const list = data.homework
     .filter((h) => (!who || h.student_id === who) && byId.has(h.student_id))
-    .filter((h) => (show === 'open' ? !h.done : show === 'done' ? h.done : true))
+    .filter((h) => (show === 'open' ? isPending(h) : show === 'done' ? h.done : true))
     .sort((a, b) => b.given_date.localeCompare(a.given_date));
 
   const del = (h) => confirm('Bu ödev silinsin mi?') && run(async () => { await store.remove('homework', h.id); await reload(); }, 'Ödev silindi');
@@ -152,8 +154,7 @@ function Track() {
       <Tabs tabs={[['open', 'Bildirilmedi'], ['done', 'Bildirildi'], ['all', 'Tümü']]} value={show} onChange={setShow} />
       {list.length === 0 ? <div class="card"><Empty title="Ödev yok" /></div> : list.map((h) => {
         const s = byId.get(h.student_id);
-        const late = !h.done && h.due_date < now.date;
-        const [chipCls, chipLabel] = h.done ? HW_CHIP[hwState(h)] : ['bad', late ? 'Süresi geçti' : 'Bildirilmedi'];
+        const [chipCls, chipLabel] = hwChip(h, now.date);
         return (
           <div key={h.id} class={`card card-pad hw${h.done ? ' done' : ''}`}>
             <div class="spread">
@@ -171,7 +172,106 @@ function Track() {
                 : <WaButton small phone={s.parent_phone} text={msgHomeworkGiven(h.items, h.due_date, { studentName: s.name, sibling: siblingsOf(data, s).length > 0 })} label="Ödevi tekrar gönder" />}
               <button class="btn small ghost danger" onClick={() => del(h)}><Icon name="trash" /></button>
             </div>
-            {!h.done && <LateNotify h={h} s={s} />}
+            {isPending(h) && <LateNotify h={h} s={s} />}
+            {lateMark(h) && <LateMarkInfo h={h} />}
+          </div>
+        );
+      })}
+      {who && show === 'open' && <PastList title="Önceki ödevler" list={pastOf(data.homework, who, byId)} byId={byId} showName={false} />}
+    </div>
+  );
+}
+
+// Ödevin durum etiketi: öğrenci bildirdiyse o; öğretmen gecikmiş diye ele aldıysa Yapmadı/Göndermedi/Gördüm
+function hwChip(h, today) {
+  if (h.done) return HW_CHIP[hwState(h)];
+  const m = lateMark(h);
+  if (m) return [LATE_MARK_CHIP[m.kind], LATE_MARK_LABEL[m.kind]];
+  return ['bad', h.due_date < today ? 'Süresi geçti' : 'Bildirilmedi'];
+}
+
+const pastOf = (homework, sid, byId) =>
+  homework.filter((h) => h.student_id === sid && byId.has(sid) && isPast(h)).sort((a, b) => b.given_date.localeCompare(a.given_date));
+
+// Gecikmiş ödevi ele alma: veliye mesaj gönderip kaydet YA DA göndermeden kaydet. İkisinde de ödev gecikmiş listesinden (Panel, Takip) kalkar,
+// öğrencinin Geçmiş ödevlerinde durumuyla kalır. Kitap/sayfa asla değişmez. "Yaptı" ayrıca ödevi "yapıldı" işaretler.
+export function LateNotify({ h, s }) {
+  const { store, reload, now } = useApp();
+  const [run, busy] = useAction();
+  const [kind, setKind] = useState(null);
+  const pick = (k) => setKind(kind === k ? null : k);
+  const text = kind === 'done' ? msgHomeworkDone(s.name, h.items) : kind ? msgHomeworkLate(kind, s.name, h.items) : '';
+  const save = (sent) => run(async () => {
+    if (kind === 'done') {
+      await store.setHomeworkDone(h.id, true);
+      await store.update('homework', h.id, sent ? { sent_done: true, seen_done: true } : { seen_done: true });
+    } else {
+      await store.update('homework', h.id, { note: makeLateNote(kind, now.date, sent) });
+    }
+    setKind(null);
+    await reload();
+  }, kind === 'done' ? 'Ödev yapıldı olarak işaretlendi' : 'Kaydedildi; geçmiş ödevlere taşındı');
+  const seen = () => run(async () => { await store.update('homework', h.id, { note: makeLateNote('seen', now.date, false) }); await reload(); }, 'Gördüm olarak kaydedildi; geçmiş ödevlere taşındı');
+  return (
+    <div class="stack" style="margin-top:10px">
+      <div class="small muted">Gecikmiş ödevi sonuçlandır</div>
+      <div class="row wrap">
+        {[...Object.entries(LATE_KINDS).map(([k, v]) => [k, v.label]), ['done', 'Yaptı']].map(([k, label]) => (
+          <button type="button" key={k} class={`btn small${kind === k ? ' primary' : ' ghost'}`} aria-pressed={kind === k} onClick={() => pick(k)}>{label}</button>
+        ))}
+        <button type="button" class="btn small ghost" disabled={busy} onClick={seen}>Gördüm</button>
+      </div>
+      {kind && (
+        <div class="reason-box">
+          <div class="msg">{text}</div>
+          {kind === 'done' && <div class="small muted">Kaydedince bu ödev "yapıldı" olarak işaretlenir.</div>}
+          <div class="row wrap">
+            <WaButton small phone={s.parent_phone} text={text} label="Veliye gönder ve kaydet" onSent={() => save(true)} />
+            <button type="button" class="btn small" disabled={busy} onClick={() => save(false)}>Göndermeden kaydet</button>
+            <button type="button" class="btn small ghost" onClick={() => setKind(null)}>Vazgeç</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Ele alınmış gecikmiş ödevin kaydı + yanlışlıkla basıldıysa geri alma
+function LateMarkInfo({ h }) {
+  const { store, reload } = useApp();
+  const [run, busy] = useAction();
+  const m = lateMark(h);
+  const undo = () => confirm('Bu ödev yeniden gecikmiş ödevler listesine dönsün mü?') && run(async () => { await store.update('homework', h.id, { note: '' }); await reload(); }, 'Geri alındı');
+  return (
+    <div class="spread small muted" style="margin-top:10px">
+      <span>{LATE_MARK_LABEL[m.kind]} olarak kaydedildi{m.date ? ` · ${fmtShort(m.date)}` : ''}{m.kind !== 'seen' ? (m.sent ? ' · veliye gönderildi ✓' : ' · veliye gönderilmedi') : ''}</span>
+      <button class="btn small ghost" disabled={busy} onClick={undo}>Geri al</button>
+    </div>
+  );
+}
+
+// Geçmiş ödev kartları (salt okunur): kitaplar, durum, öğrencinin ya da öğretmenin kaydı
+function PastList({ title, list, byId, showName = true }) {
+  const { now } = useApp();
+  if (!list.length) return title ? <div class="hint">{title}: henüz yok.</div> : <div class="card"><Empty title="Geçmiş ödev yok">Bildirilen ya da gecikmiş diye sonuçlandırılan ödevler burada kalır.</Empty></div>;
+  return (
+    <div class="stack">
+      {title && <h2 class="section-title">{title} ({list.length})</h2>}
+      {list.map((h) => {
+        const [chipCls, chipLabel] = hwChip(h, now.date);
+        const m = lateMark(h);
+        return (
+          <div key={h.id} class="card card-pad hw done">
+            <div class="spread">
+              <div class="item-title">{showName ? byId.get(h.student_id).name : `Verildi ${fmtShort(h.given_date)}`}</div>
+              <span class={`chip ${chipCls}`}>{chipLabel}</span>
+            </div>
+            <HomeworkItems h={h} />
+            <div class="spread small muted">
+              <span>{showName ? `Verildi ${fmtShort(h.given_date)} · ` : ''}Son gün {fmtDate(h.due_date)}</span>
+              <span>{h.done && h.done_at ? `Bildirildi ${fmtShort(String(h.done_at).slice(0, 10))}` : ''}</span>
+            </div>
+            {m && !h.done && <LateMarkInfo h={h} />}
           </div>
         );
       })}
@@ -179,33 +279,17 @@ function Track() {
   );
 }
 
-// Bildirilmemiş ödev için veliye durum mesajı. Yapmadı / Göndermedi: yalnız mesaj, kayda hiçbir şey yazılmaz.
-// Yaptı: mesaj gönderilir ve ödev "yapıldı" işaretlenir (kitap/sayfa bilgisi değişmez); önce mesajı görür, sonra onaylarsınız.
-function LateNotify({ h, s }) {
-  const { store, reload } = useApp();
-  const [run] = useAction();
-  const [kind, setKind] = useState(null);
-  const pick = (k) => setKind(kind === k ? null : k);
-  const text = kind === 'done' ? msgHomeworkDone(s.name, h.items) : kind ? msgHomeworkLate(kind, s.name, h.items) : '';
-  const markDone = () => run(async () => { await store.setHomeworkDone(h.id, true); await store.update('homework', h.id, { sent_done: true, seen_done: true }); await reload(); }, 'Ödev yapıldı olarak işaretlendi');
+// GEÇMİŞ sekmesi: bildirilmiş ve gecikmiş diye sonuçlandırılmış tüm ödevler; öğrenci adıyla süzülür
+function Past() {
+  const { data } = useApp();
+  const [who, setWho] = useState('');
+  const byId = useMemo(() => new Map(data.students.map((s) => [s.id, s])), [data.students]);
+  const list = data.homework.filter((h) => byId.has(h.student_id) && (!who || h.student_id === who) && isPast(h))
+    .sort((a, b) => b.given_date.localeCompare(a.given_date));
   return (
-    <div class="stack" style="margin-top:10px">
-      <div class="small muted">Veliye durum bildir</div>
-      <div class="row wrap">
-        {[...Object.entries(LATE_KINDS).map(([k, v]) => [k, v.label]), ['done', 'Yaptı']].map(([k, label]) => (
-          <button type="button" key={k} class={`btn small${kind === k ? ' primary' : ' ghost'}`} aria-pressed={kind === k} onClick={() => pick(k)}>{label}</button>
-        ))}
-      </div>
-      {kind && (
-        <div class="reason-box">
-          <div class="msg">{text}</div>
-          {kind === 'done' && <div class="small muted">Gönderince bu ödev "yapıldı" olarak işaretlenir.</div>}
-          <div class="row">
-            <WaButton small phone={s.parent_phone} text={text} label={kind === 'done' ? 'Gönder ve yapıldı say' : 'Veliye gönder'} onSent={kind === 'done' ? markDone : undefined} />
-            <button type="button" class="btn small ghost" onClick={() => setKind(null)}>Vazgeç</button>
-          </div>
-        </div>
-      )}
+    <div class="stack">
+      <StudentPicker students={data.students} value={who} onChange={setWho} allLabel="Tüm öğrenciler" />
+      <PastList list={list} byId={byId} />
     </div>
   );
 }
