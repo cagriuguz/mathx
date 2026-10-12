@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'preact/hooks';
 import { useApp, useAction, Tabs, Icon, Field, Empty, WaButton, Seg, StudentPicker } from '../../ui.jsx';
-import { msgHomeworkGiven, msgHomeworkGivenStudent, msgHomeworkDone } from '../../core/messages.js';
+import { msgHomeworkGiven, msgHomeworkGivenStudent, msgHomeworkDone, msgHomeworkLate, LATE_KINDS } from '../../core/messages.js';
 import { WA_RECIPIENTS } from '../../core/wa.js';
 import { addDays, fmtDate, fmtShort } from '../../core/dates.js';
 import { HomeworkItems, TeacherItemEdit } from '../hwitems.jsx';
@@ -171,9 +171,41 @@ function Track() {
                 : <WaButton small phone={s.parent_phone} text={msgHomeworkGiven(h.items, h.due_date, { studentName: s.name, sibling: siblingsOf(data, s).length > 0 })} label="Ödevi tekrar gönder" />}
               <button class="btn small ghost danger" onClick={() => del(h)}><Icon name="trash" /></button>
             </div>
+            {!h.done && <LateNotify h={h} s={s} />}
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// Bildirilmemiş ödev için veliye durum mesajı. Yapmadı / Göndermedi: yalnız mesaj, kayda hiçbir şey yazılmaz.
+// Yaptı: mesaj gönderilir ve ödev "yapıldı" işaretlenir (kitap/sayfa bilgisi değişmez); önce mesajı görür, sonra onaylarsınız.
+function LateNotify({ h, s }) {
+  const { store, reload } = useApp();
+  const [run] = useAction();
+  const [kind, setKind] = useState(null);
+  const pick = (k) => setKind(kind === k ? null : k);
+  const text = kind === 'done' ? msgHomeworkDone(s.name, h.items) : kind ? msgHomeworkLate(kind, s.name, h.items) : '';
+  const markDone = () => run(async () => { await store.setHomeworkDone(h.id, true); await store.update('homework', h.id, { sent_done: true, seen_done: true }); await reload(); }, 'Ödev yapıldı olarak işaretlendi');
+  return (
+    <div class="stack" style="margin-top:10px">
+      <div class="small muted">Veliye durum bildir</div>
+      <div class="row wrap">
+        {[...Object.entries(LATE_KINDS).map(([k, v]) => [k, v.label]), ['done', 'Yaptı']].map(([k, label]) => (
+          <button type="button" key={k} class={`btn small${kind === k ? ' primary' : ' ghost'}`} aria-pressed={kind === k} onClick={() => pick(k)}>{label}</button>
+        ))}
+      </div>
+      {kind && (
+        <div class="reason-box">
+          <div class="msg">{text}</div>
+          {kind === 'done' && <div class="small muted">Gönderince bu ödev "yapıldı" olarak işaretlenir.</div>}
+          <div class="row">
+            <WaButton small phone={s.parent_phone} text={text} label={kind === 'done' ? 'Gönder ve yapıldı say' : 'Veliye gönder'} onSent={kind === 'done' ? markDone : undefined} />
+            <button type="button" class="btn small ghost" onClick={() => setKind(null)}>Vazgeç</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

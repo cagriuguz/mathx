@@ -109,7 +109,19 @@ export const msgHomeworkGivenStudent = (items, dueDate) => fillTemplate(WA_TEMPL
 /** 5) Ödev durumu bildirildi — veliye ve öğretmene */
 export const msgHomeworkDone = (studentName, items) => fillTemplate(WA_TEMPLATES.done.body, homeworkDoneParams(studentName, items));
 
-const PACKAGE_WORD = { weekly: 'haftalık', '4weekly': '4 haftalık', monthly: 'aylık', oneoff: 'ders' };
+// Öğretmenin süresi geçen ödev için veliye elle yazdığı bildirimler (yalnız wa.me; Meta şablonu gerekmez, veritabanına yazılmaz).
+// "Yaptı" için yukarıdaki onaylı msgHomeworkDone metni kullanılır.
+export const LATE_KINDS = {
+  none: { label: 'Yapmadı', body: 'Sayın veli, {{1}} isimli öğrenciniz {{2}} ödevini yapmamıştır. Bilginize.' },
+  unsent: { label: 'Göndermedi', body: 'Sayın veli, {{1}} isimli öğrenciniz {{2}} ödevini sisteme göndermemiştir. Bilginize.' },
+};
+
+/** "ACİL 10. SINIF 8. tema" biçiminde kitap + sayfa metni (ödev verildi mesajıyla aynı) */
+export const homeworkBooksText = (items) => homeworkGivenParams(items, '1970-01-01')[0];
+
+export const msgHomeworkLate = (kind, studentName, items) => fillTemplate(LATE_KINDS[kind].body, [studentName, homeworkBooksText(items)]);
+
+const PACKAGE_WORD ={ weekly: 'haftalık', '4weekly': '4 haftalık', monthly: 'aylık', oneoff: 'ders' };
 
 /** 2) Paket doldu */
 export const msgPackageFull = (period) =>
