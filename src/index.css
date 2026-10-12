@@ -474,3 +474,10 @@ table.t tr.current td { background: var(--brass-soft); }
 .hw-q { font-size: 14px; font-weight: 600; margin-top: 2px; }
 .item-seg button { padding: 12px 6px; font-size: 14px; }
 @media (max-width: 400px) { .item-seg button { font-size: 13px; padding: 12px 4px; } }
+
+/* Ders değerlendirmesi: 1-5 puan düğmeleri */
+.seg.five { grid-template-columns: repeat(5, 1fr); grid-auto-flow: row; }
+.seg.five button { padding: 11px 0; font-size: 15px; }
+.score-row { display: grid; gap: 6px; }
+.score-row .score-label { display: flex; justify-content: space-between; align-items: baseline; font-weight: 600; font-size: 14px; }
+.score-row .score-label small { font-weight: 500; color: var(--muted, #6b6b6b); }

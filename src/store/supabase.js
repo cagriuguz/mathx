@@ -36,6 +36,7 @@ function fail(error, fallback) {
   if (/voice_notes|mark_voice_heard/i.test(m) && /does not exist|schema cache|not find/i.test(m)) throw new Error('Sesli not için veritabanı güncellemesi gerekiyor: supabase/guncelleme-2026-09-27-sesli-not.sql dosyasını Supabase SQL Editor\'de bir kez çalıştırın.');
   if (/submit_homework|rename_account|password_changed/i.test(m) && /does not exist|schema cache|not find/i.test(m)) throw new Error('Bu özellik için veritabanı güncellemesi gerekiyor: supabase/guncelleme-2026-10-03-odev-kalemleri.sql dosyasını Supabase SQL Editor\'de bir kez çalıştırın.');
   if (/extra_lessons/i.test(m) && /does not exist|schema cache|not find/i.test(m)) throw new Error('Ek ders için veritabanı güncellemesi gerekiyor: supabase/guncelleme-2026-09-27b-ek-ders.sql dosyasını Supabase SQL Editor\'de bir kez çalıştırın.');
+  if (/lesson_reviews/i.test(m) && /does not exist|schema cache|not find/i.test(m)) throw new Error('Ders değerlendirmesi için veritabanı güncellemesi gerekiyor: supabase/guncelleme-2026-10-13-ders-degerlendirme.sql dosyasını Supabase SQL Editor\'de bir kez çalıştırın.');
   if (/link_sibling|unlink_sibling|parent_links/i.test(m) && /does not exist|schema cache|not find/i.test(m)) throw new Error('Kardeş (ortak veli) için veritabanı güncellemesi gerekiyor: supabase/guncelleme-2026-09-28-kardes.sql dosyasını Supabase SQL Editor\'de bir kez çalıştırın.');
   if (/Failed to fetch|NetworkError/i.test(m)) throw new Error('İnternet bağlantısı yok. Bağlantıyı kontrol edip tekrar deneyin.');
   throw new Error(fallback ? `${fallback} (${m})` : m);
@@ -89,7 +90,7 @@ export function createSupabaseStore({ url, anonKey }) {
         if (!ROLE_TABLES[profile.role].includes(t)) { out[t] = []; return; }
         const { data, error } = await sb.from(t).select(t === 'voice_notes' ? VOICE_COLS : '*');
         // Şifre / sesli not tablosu henüz kurulmamışsa (güncelleme SQL'i çalışmadan önce) program yine açılsın
-        if (error && (t === 'logins' || t === 'voice_notes' || t === 'extra_lessons')) { out[t] = []; return; }
+        if (error && (t === 'logins' || t === 'voice_notes' || t === 'extra_lessons' || t === 'lesson_reviews')) { out[t] = []; return; }
         fail(error, `${t} okunamadı`);
         out[t] = data || [];
       }));

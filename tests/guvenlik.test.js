@@ -200,3 +200,30 @@ test('güvenlik kuralları (RLS)', async () => {
   assert.equal((await db.query(`select count(*)::int as n from auth.users where id = '${U.pB}'`)).rows[0].n, 0, 'B velisinin hesabı silinmeli');
   assert.equal((await db.query(`select token from public.wa_config`)).rows[0].token, 'GIZLI-ANAHTAR', 'boş anahtar eskisini silmemeli');
 });
+
+test('ders değerlendirmesi: yalnız öğretmen görür/yazar; puan ve uzunluk sınırları; aynı derse tek kayıt', async () => {
+  const db = await setup();
+  await as(db, U.teacher, () => db.query(`select public.claim_teacher('ogretmen')`));
+  await as(db, U.teacher, async () => {
+    await db.query(`insert into public.lesson_reviews(student_id,date,time,verim,calisma,konu,note,veli_gorusme) values ('${S.A}','2026-09-02','17:00',5,3,'Üslü','iyi',true),('${S.B}','2026-09-02','17:00',2,null,'','',false)`);
+    assert.equal(await count(db, 'lesson_reviews'), 2);
+    assert.equal(await rejects(db.query(`insert into public.lesson_reviews(student_id,date,time,verim) values ('${S.A}','2026-09-02','17:00',4)`)), true, 'aynı derse ikinci değerlendirme olmaz');
+    assert.equal(await rejects(db.query(`insert into public.lesson_reviews(student_id,date,time,verim) values ('${S.A}','2026-09-09','17:00',6)`)), true, 'puan 1-5');
+    assert.equal(await rejects(db.query(`insert into public.lesson_reviews(student_id,date,time,verim) values ('${S.A}','2026-09-09','17:00',0)`)), true, 'puan 0 olamaz');
+    assert.equal(await rejects(db.query(`insert into public.lesson_reviews(student_id,date,time,konu) values ('${S.A}','2026-09-09','17:00','${'x'.repeat(61)}')`)), true, 'konu 60');
+    assert.equal(await rejects(db.query(`insert into public.lesson_reviews(student_id,date,time,note) values ('${S.A}','2026-09-09','17:00','${'x'.repeat(201)}')`)), true, 'not 200');
+  });
+  await as(db, U.pA, async () => {
+    assert.equal(await count(db, 'lesson_reviews'), 0, 'veli değerlendirmeyi göremez');
+    assert.equal(await rejects(db.query(`insert into public.lesson_reviews(student_id,date,time,verim) values ('${S.A}','2026-09-20','17:00',4)`)), true, 'veli ekleyemez');
+    await db.query(`update public.lesson_reviews set verim = 1`);
+    await db.query(`delete from public.lesson_reviews`);
+  });
+  await as(db, U.sA, async () => { assert.equal(await count(db, 'lesson_reviews'), 0, 'öğrenci değerlendirmeyi göremez'); });
+  await as(db, U.teacher, async () => {
+    assert.equal(Number((await db.query(`select sum(verim)::int as v from public.lesson_reviews`)).rows[0].v), 7, 'veli değiştirememiş/silememiş');
+  });
+  // öğrenci silinince değerlendirmeleri de gider (veri yetim kalmaz)
+  await db.exec(`delete from public.students where id = '${S.B}'`);
+  assert.equal(await count(db, 'lesson_reviews'), 1);
+});

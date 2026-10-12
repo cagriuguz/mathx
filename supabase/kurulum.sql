@@ -187,6 +187,25 @@ create table if not exists public.extra_lessons (
   created_at timestamptz default now()
 );
 
+-- DERS DEĞERLENDİRMESİ: her ders sonrası öğretmenin 1-5 puanları + not. YALNIZ öğretmen okur/yazar (veli ve öğrenci HİÇ göremez).
+create table if not exists public.lesson_reviews (
+  id uuid primary key default gen_random_uuid(),
+  student_id uuid not null references public.students(id) on delete cascade,
+  date date not null,
+  time text not null,
+  verim smallint check (verim between 1 and 5),
+  calisma smallint check (calisma between 1 and 5),
+  gidisat smallint check (gidisat between 1 and 5),
+  dikkat smallint check (dikkat between 1 and 5),
+  anlama smallint check (anlama between 1 and 5),
+  konu text default '' check (char_length(konu) <= 60),
+  note text default '' check (char_length(note) <= 200),
+  veli_gorusme boolean not null default false,
+  created_at timestamptz default now(),
+  unique (student_id, date, time)
+);
+create index if not exists lesson_reviews_student_idx on public.lesson_reviews(student_id);
+
 -- KARDEŞLER: bir veli hesabı birden çok öğrenciyi görebilir (tek kullanıcı adı + tek şifre).
 -- Velinin ilk öğrencisi profiles.student_id'de; kardeşleri burada. Öğrenci kayıtları (ders, ödeme, ödev) AYRI kalır.
 create table if not exists public.parent_links (
@@ -463,13 +482,14 @@ alter table public.settings enable row level security;
 alter table public.logins enable row level security;
 alter table public.voice_notes enable row level security;
 alter table public.extra_lessons enable row level security;
+alter table public.lesson_reviews enable row level security;
 alter table public.parent_links enable row level security;
 alter table public.homework_photos enable row level security;
 
 do $$ declare t text; begin
   -- Eski kuralları temizle (yeniden çalıştırmada çakışmasın)
   for t in select tablename from pg_tables where schemaname = 'public' and tablename in
-    ('profiles','students','schedules','plans','marks','payments','books','homework','expenses','expense_payments','settings','logins','voice_notes','extra_lessons','parent_links','homework_photos') loop
+    ('profiles','students','schedules','plans','marks','payments','books','homework','expenses','expense_payments','settings','logins','voice_notes','extra_lessons','lesson_reviews','parent_links','homework_photos') loop
     execute format('drop policy if exists teacher_all on public.%I', t);
     execute format('drop policy if exists parent_read on public.%I', t);
     execute format('drop policy if exists own_read on public.%I', t);
@@ -502,7 +522,7 @@ create policy parent_read on public.homework_photos for select to authenticated 
 -- ───────────── Anlık güncelleme (bir telefonda yapılan değişiklik diğerlerinde hemen görünür)
 -- voice_notes ve homework_photos BİLEREK yok: ses satırları büyük; veli ekranı açılınca/öne gelince zaten yenilenir.
 do $$ declare t text; begin
-  foreach t in array array['students','schedules','plans','marks','payments','books','homework','expenses','expense_payments','settings','logins','extra_lessons'] loop
+  foreach t in array array['students','schedules','plans','marks','payments','books','homework','expenses','expense_payments','settings','logins','extra_lessons','lesson_reviews'] loop
     begin execute format('alter publication supabase_realtime add table public.%I', t);
     exception when duplicate_object then null; end;
   end loop;

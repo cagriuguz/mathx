@@ -5,6 +5,8 @@ import { REASON_MAX, cleanReason, scheduleAt } from '../core/lessons.js';
 import { fmtShort, fmtDate } from '../core/dates.js';
 import { fmtTL, fmtHours, fmtNum } from '../core/money.js';
 import { PLAN_TYPES, STATUS_LABEL } from '../core/billing.js';
+import { ReviewSheet } from './review.jsx';
+import { reviewMap, reviewAvg } from '../core/review.js';
 
 const LESSON_CHIP = {
   done: ['ok', 'Yapıldı'],
@@ -14,9 +16,12 @@ const LESSON_CHIP = {
 };
 
 export function LessonRow({ lesson, name, editable = true }) {
-  const { store, reload } = useApp();
+  const { store, reload, data } = useApp();
   const [run, busy] = useAction();
   const [open, setOpen] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const review = editable && lesson.status !== 'not_held' && lesson.status !== 'upcoming' ? reviewMap(data.lesson_reviews).get(lesson.key) : null;
+  const canReview = editable && (lesson.status === 'done' || lesson.status === 'today');
   const [text, setText] = useState('');
   const [err, setErr] = useState('');
   const [cls, label] = LESSON_CHIP[lesson.status];
@@ -60,7 +65,13 @@ export function LessonRow({ lesson, name, editable = true }) {
         {editable && lesson.status === 'not_held' && (
           <button class="btn small ghost" disabled={busy} onClick={undo}>Geri al</button>
         )}
+        {canReview && (
+          <button class={`btn small${review ? ' ghost' : ' primary'}`} onClick={() => setReviewing(true)}>
+            {review ? `Değerlendirildi · ${String(Math.round(reviewAvg(review) * 10) / 10).replace('.', ',')}` : 'Değerlendir'}
+          </button>
+        )}
       </div>
+      {reviewing && <ReviewSheet lesson={lesson} onClose={() => setReviewing(false)} />}
       {open && (
         <div class="reason-box">
           <div class="spread">

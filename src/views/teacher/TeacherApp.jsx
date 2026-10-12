@@ -7,6 +7,8 @@ import { msgHomeworkDone, msgPaymentLate, msgPackageFull } from '../../core/mess
 import { fmtTL } from '../../core/money.js';
 import { monthKey, fmtDate } from '../../core/dates.js';
 import { buildNotifications } from '../../core/notify.js';
+import { missingReviews, studentWarnings } from '../../core/review.js';
+import { ReviewSheet } from '../review.jsx';
 import { LessonRow, PeriodBody } from '../shared.jsx';
 import { Lessons } from './Lessons.jsx';
 import { Students } from './Students.jsx';
@@ -51,7 +53,7 @@ export function TeacherApp() {
   }, [doneIds.join()]);
 
   const lateCount = periods.filter((p) => isOpen(p) && p.status === 'late').length;
-  const notifCount = buildNotifications(data, periods, now.date).count;
+  const notifCount = buildNotifications(data, periods, now.date).count + missingReviews(data, now).length + studentWarnings(data, now).length;
   const nav = NAV.map((n) => ({ ...n, dot: (n.key === 'panel' && notifCount > 0) || (n.key === 'homework' && doneIds.length > 0) || (n.key === 'money' && lateCount > 0) }));
   const cur = NAV.find((n) => n.key === tab) || NAV[0];
 
@@ -76,6 +78,7 @@ function Panel({ go }) {
   const { data, periods, now, store, reload } = useApp();
   const [run] = useAction();
   const [paying, setPaying] = useState(null);
+  const [reviewing, setReviewing] = useState(null);
   const byId = useMemo(() => new Map(data.students.map((s) => [s.id, s])), [data.students]);
 
   const todays = useMemo(() => {
@@ -86,6 +89,8 @@ function Panel({ go }) {
   const open = periods.filter(isOpen).sort((a, b) => (a.status === b.status ? a.due.localeCompare(b.due) : a.status === 'late' ? -1 : 1));
   const openTotal = open.reduce((a, p) => a + p.remaining, 0);
   const notif = buildNotifications(data, periods, now.date);
+  const missing = useMemo(() => missingReviews(data, now), [data, now]);
+  const warns = useMemo(() => studentWarnings(data, now), [data, now]);
   const upcomingPay = open.filter((p) => p.status !== 'late');
   const month = monthKey(now.date);
   const monthIncome = data.payments.filter((p) => !p.deleted_at && p.method !== 'indirim' && p.paid_date.startsWith(month)).reduce((a, p) => a + p.amount, 0);
@@ -160,6 +165,29 @@ function Panel({ go }) {
       </section>
 
       <section>
+        <div class="section-head"><h2 class="section-title">Öğrenci değerlendirmesi</h2>{missing.length + warns.length > 0 && <span class="chip bad">{missing.length + warns.length}</span>}</div>
+        <div class="card">
+          {missing.length + warns.length === 0 ? <Empty title="Eksik değerlendirme yok ✓">Dersi yapılan öğrencilerin değerlendirmesi girilince burası boş kalır. Her dersin satırındaki "Değerlendir" düğmesiyle girersiniz.</Empty> : (
+            <ul class="list">
+              {warns.map((w) => (
+                <li key={'w' + w.student_id + w.kind} class="stack">
+                  <div class="spread"><span class="item-title">{w.name}</span><span class="chip bad">Uyarı</span></div>
+                  <div class="small">{w.text}</div>
+                </li>
+              ))}
+              {missing.slice(0, 8).map((l) => (
+                <li key={'m' + l.key} class="spread">
+                  <div><div class="item-title">{l.student_name}</div><div class="small muted">{fmtDate(l.date)} · {l.time} dersi · değerlendirme girilmedi</div></div>
+                  <button class="btn small primary" onClick={() => setReviewing(l)}>Değerlendir</button>
+                </li>
+              ))}
+              {missing.length > 8 && <li class="small muted">… ve {missing.length - 8} ders daha (Dersler → Takvim'den girebilirsiniz).</li>}
+            </ul>
+          )}
+        </div>
+      </section>
+
+      <section>
         <div class="section-head"><h2 class="section-title">Bugünün dersleri</h2><button class="btn small ghost" onClick={() => go('lessons')}>Takvim</button></div>
         <div class="card">
           {todays.length ? (
@@ -192,6 +220,7 @@ function Panel({ go }) {
         </div>
       </section>
       {paying && <PaymentSheet period={paying} onClose={() => setPaying(null)} />}
+      {reviewing && <ReviewSheet lesson={reviewing} onClose={() => setReviewing(null)} />}
     </div>
   );
 }

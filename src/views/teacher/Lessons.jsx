@@ -5,6 +5,8 @@ import { addDays, weekStart, fmtShort, fmtDate, TR_DAYS, monthKey, monthFirst, m
 import { LessonRow, ExtraLessonSheet } from '../shared.jsx';
 import { studentPeriods, studentLedger, PLAN_TYPES, STATUS_LABEL } from '../../core/billing.js';
 import { fmtTL, fmtHours } from '../../core/money.js';
+import { buildReport, REVIEW_FIELDS } from '../../core/review.js';
+import { buildXlsx, downloadBlob } from '../../core/xlsx.js';
 
 const passive = (s) => (s.active === false ? ' (pasif)' : '');
 
@@ -12,8 +14,8 @@ export function Lessons() {
   const [tab, setTab] = useState('week');
   return (
     <>
-      <Tabs tabs={[['week', 'Takvim'], ['student', 'Öğrenci'], ['report', 'Ders Raporu']]} value={tab} onChange={setTab} />
-      {tab === 'week' ? <Week /> : tab === 'student' ? <StudentLedger /> : <Report />}
+      <Tabs tabs={[['week', 'Takvim'], ['student', 'Öğrenci'], ['report', 'Ders Raporu'], ['weekly', 'Haftalık Rapor']]} value={tab} onChange={setTab} />
+      {tab === 'week' ? <Week /> : tab === 'student' ? <StudentLedger /> : tab === 'weekly' ? <WeeklyReport /> : <Report />}
     </>
   );
 }
@@ -202,6 +204,51 @@ function StudentLedger() {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** Haftalık rapor: ekranda özet + tek dokunuşla Excel (Özet, Ödevler, Dersler, Değerlendirmeler). Keçeli'ye bu dosya verilir. */
+function WeeklyReport() {
+  const { data, now, toast } = useApp();
+  const [monday, setMonday] = useState(addDays(weekStart(now.date), -7)); // açılışta biten hafta (rapor genelde geçen haftanındır)
+  const sunday = addDays(monday, 6);
+  const rep = useMemo(() => buildReport(data, monday, sunday, now), [data, monday, now]);
+  const excel = () => {
+    try { downloadBlob(buildXlsx(rep.sheets), `MathX-haftalik-rapor-${monday}.xlsx`); toast('Excel dosyası indirildi'); }
+    catch (e) { toast('Excel hazırlanamadı: ' + (e.message || e)); }
+  };
+  return (
+    <div class="stack">
+      <div class="card card-pad spread">
+        <button class="btn small" aria-label="Önceki hafta" onClick={() => setMonday(addDays(monday, -7))}><Icon name="back" /></button>
+        <div style="text-align:center">
+          <div class="num" style="font-size:19px">{fmtShort(monday)} – {fmtShort(sunday)}</div>
+          <div class="small muted">{rep.summary.length} öğrenci</div>
+        </div>
+        <button class="btn small" aria-label="Sonraki hafta" onClick={() => setMonday(addDays(monday, 7))}><Icon name="chevron" /></button>
+      </div>
+      {monday !== weekStart(now.date) && <button class="btn" onClick={() => setMonday(weekStart(now.date))}>Bu hafta</button>}
+      <button class="btn primary" onClick={excel}><Icon name="report" /> Excel olarak indir</button>
+      {rep.warns.length > 0 && (
+        <div class="card"><ul class="list">{rep.warns.map(([n, t], i) => <li key={i} class="spread"><span class="item-title">{n}</span><span class="small">{t}</span></li>)}</ul></div>
+      )}
+      <div class="card">
+        {rep.summary.length === 0 ? <Empty title="Bu hafta için kayıt yok" /> : (
+          <ul class="list">
+            {rep.summary.map((r) => (
+              <li key={r[0]} class="stack">
+                <div class="item-title">{r[0]}</div>
+                <div class="small">Ders: <b>{r[1]}</b> yapıldı, <b>{r[2]}</b> yapılmadı · Ödev: <b>{r[3]}</b> verildi, <b>{r[4]}</b> geldi, <b>{r[5]}</b> gelmedi</div>
+                <div class="small muted">
+                  {r[11] > 0 ? REVIEW_FIELDS.map(([, l], i) => `${l.split(' ')[0]} ${String(r[6 + i] === '' ? '–' : r[6 + i]).replace('.', ',')}`).join(' · ') : 'Bu hafta değerlendirme girilmemiş'}
+                  {r[12] > 0 ? ` · ${r[12]} ders değerlendirilmedi` : ''}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
