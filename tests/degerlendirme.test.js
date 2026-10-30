@@ -118,3 +118,12 @@ test('rastgele oturum: rapor hiçbir durumda çökmez, sayılar tutarlı (60 toh
     assert.ok(buildXlsx(rep.sheets).size > 500);
   }
 });
+
+test('ek ders değerlendirilince eksik listesinden kalkar', () => {
+  const d = base();
+  const now = { date: '2026-10-13', time: '12:00' };
+  d.extra_lessons = [{ id: 'e1', student_id: 's1', date: '2026-10-09', time: '17:50', hours: 1 }];
+  assert.ok(missingReviews(d, now).some((l) => l.extra));
+  d.lesson_reviews = [{ id: 'r1', student_id: 's1', date: '2026-10-09', time: '17:50', verim: 5 }];
+  assert.ok(!missingReviews(d, now).some((l) => l.extra));
+});

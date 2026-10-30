@@ -16,7 +16,8 @@ export const KONU_MAX = 60;
 export const NOTE_MAX = 200;
 export const LOOKBACK_DAYS = 14; // değerlendirmesi girilmemiş dersler için geriye bakış
 
-const reviewKey = (r) => lessonKey(r.student_id, r.date, r.time);
+// Ek derslerin l.key'i `x|id` olduğundan değerlendirme eşleşmesi her zaman öğrenci|tarih|saat ile yapılır
+export const reviewKey = (r) => lessonKey(r.student_id, r.date, r.time);
 
 export function reviewMap(reviews) {
   const m = new Map();
@@ -57,7 +58,7 @@ export function missingReviews(data, now, days = LOOKBACK_DAYS) {
   for (const s of data.students) {
     if (s.active === false) continue;
     for (const l of decorateLessons(lessonsFor(s, data, from, now.date), data.marks, now)) {
-      if (l.status === 'done' && !rm.has(l.key)) out.push({ ...l, student_name: s.name });
+      if (l.status === 'done' && !rm.has(reviewKey(l))) out.push({ ...l, student_name: s.name });
     }
   }
   return out.sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
@@ -75,18 +76,28 @@ export function studentWarnings(data, now) {
     const revs = (data.lesson_reviews || []).filter((r) => r.student_id === s.id)
       .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
     const last3 = revs.slice(-3).map(reviewAvg).filter((x) => x !== null);
-    if (last3.length === 3 && mean(last3) <= 2.5) out.push({ student_id: s.id, name: s.name, kind: 'gidisat', text: `Son 3 değerlendirme ortalaması ${mean(last3).toFixed(1).replace('.', ',')}: gidişat düşük` });
+    const lastRev = revs.length ? revs[revs.length - 1].date + revs[revs.length - 1].time : '';
+    if (last3.length === 3 && mean(last3) <= 2.5) out.push({ student_id: s.id, name: s.name, kind: 'gidisat', stamp: lastRev, text: `Son 3 değerlendirme ortalaması ${mean(last3).toFixed(1).replace('.', ',')}: gidişat düşük` });
     const cal = revs.slice(-2).map((r) => r.calisma);
-    if (cal.length === 2 && cal.every((x) => x >= 1 && x <= 2)) out.push({ student_id: s.id, name: s.name, kind: 'calisma', text: 'Üst üste 2 derste "çalışıyor mu" puanı düşük' });
+    if (cal.length === 2 && cal.every((x) => x >= 1 && x <= 2)) out.push({ student_id: s.id, name: s.name, kind: 'calisma', stamp: lastRev, text: 'Üst üste 2 derste "çalışıyor mu" puanı düşük' });
     const hw = data.homework.filter((h) => h.student_id === s.id && h.due_date < now.date)
       .sort((a, b) => b.due_date.localeCompare(a.due_date)).slice(0, 4);
     const bad = hw.filter((h) => !h.done || (h.items || []).every((i) => itemStatus(h, i) === 'none')).length;
-    if (hw.length >= 3 && bad >= 3) out.push({ student_id: s.id, name: s.name, kind: 'odev', text: `Son ${hw.length} ödevin ${bad} tanesi yapılmadı` });
+    if (hw.length >= 3 && bad >= 3) out.push({ student_id: s.id, name: s.name, kind: 'odev', stamp: hw[0].due_date, text: `Son ${hw.length} ödevin ${bad} tanesi yapılmadı` });
     const ls = decorateLessons(generateOwn(s, data, from, now.date), data.marks, now).filter((l) => l.status === 'done' || l.status === 'not_held');
     const last2 = ls.slice(-2);
-    if (last2.length === 2 && last2.every((l) => l.status === 'not_held')) out.push({ student_id: s.id, name: s.name, kind: 'devam', text: 'Üst üste 2 ders yapılmadı' });
+    if (last2.length === 2 && last2.every((l) => l.status === 'not_held')) out.push({ student_id: s.id, name: s.name, kind: 'devam', stamp: last2[1].date + last2[1].time, text: 'Üst üste 2 ders yapılmadı' });
   }
   return out;
+}
+
+/** "Tamam, sil" ile kaldırılan uyarılar: öğrenci|tür|son olay damgası. Yeni bir olay olursa damga değişir, uyarı yeniden çıkar. */
+export const warningKey = (w) => `${w.student_id}|${w.kind}|${w.stamp || ''}`;
+
+/** Panelde gösterilecek uyarılar (kaldırılanlar hariç). Veriye dokunmaz; yalnız süzer. */
+export function activeWarnings(data, now) {
+  const gone = new Set((data.settings?.[0]?.dismissed_warnings) || []);
+  return studentWarnings(data, now).map((w) => ({ ...w, key: warningKey(w) })).filter((w) => !gone.has(w.key));
 }
 
 function generateOwn(s, data, from, to) {
@@ -94,17 +105,17 @@ function generateOwn(s, data, from, to) {
 }
 
 /** Haftalık (ya da herhangi aralık) rapor: öğrenci özeti, ödevler, dersler, değerlendirmeler */
-export function buildReport(data, from, to, now) {
+export function buildReport(data, from, to, now, onlyId = '') {
   const rm = reviewMap(data.lesson_reviews);
   const day = (iso) => (iso ? String(iso).slice(0, 10) : '');
-  const students = data.students.filter((s) => s.active !== false || (s.end_date && s.end_date >= from));
+  const students = data.students.filter((s) => (!onlyId || s.id === onlyId) && (s.active !== false || (s.end_date && s.end_date >= from)));
   const summary = [], hwRows = [], lessonRows = [], reviewRows = [];
   for (const s of students) {
     const lessons = decorateLessons(lessonsFor(s, data, from, to), data.marks, now);
     const done = lessons.filter((l) => l.status === 'done').length;
     const notHeld = lessons.filter((l) => l.status === 'not_held').length;
     for (const l of lessons) {
-      const rv = rm.get(l.key);
+      const rv = rm.get(reviewKey(l));
       lessonRows.push([s.name, fmtDate(l.date), l.time, l.extra ? 'Ek ders' : 'Program', { done: 'Yapıldı', not_held: 'Yapılmadı', today: 'Bugün', upcoming: 'Planlandı' }[l.status], l.reason || '', rv ? 'Girildi' : (l.status === 'done' ? 'GİRİLMEDİ' : '')]);
     }
     const hws = data.homework.filter((h) => h.student_id === s.id);
@@ -121,15 +132,15 @@ export function buildReport(data, from, to, now) {
       .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
     for (const r of revs) reviewRows.push([s.name, fmtDate(r.date), r.time, ...REVIEW_FIELDS.map(([k]) => r[k] ?? ''), r.konu || '', r.note || '', r.veli_gorusme ? 'Evet' : '']);
     const avgOf = (k) => { const v = revs.map((r) => r[k]).filter((x) => x >= 1); return v.length ? Math.round(mean(v) * 10) / 10 : ''; };
-    const missing = lessons.filter((l) => l.status === 'done' && !rm.has(l.key)).length;
+    const missing = lessons.filter((l) => l.status === 'done' && !rm.has(reviewKey(l))).length;
     summary.push([s.name, done, notHeld, given.length, comeIn.length, missed.length, ...REVIEW_FIELDS.map(([k]) => avgOf(k)), revs.length, missing]);
   }
   const sort = (a, b) => String(a[0]).localeCompare(String(b[0]), 'tr');
-  const warns = studentWarnings(data, now).map((w) => [w.name, w.text]);
+  const warns = studentWarnings(data, now).filter((w) => !onlyId || w.student_id === onlyId).map((w) => [w.name, w.text]);
   return {
     sheets: [
       { name: 'Özet', widths: [24, 10, 11, 12, 12, 12, 14, 14, 10, 12, 12, 12, 12], rows: [
-        [`Haftalık rapor: ${fmtDate(from)} – ${fmtDate(to)}`], [],
+        [`Değerlendirme raporu: ${fmtDate(from)} – ${fmtDate(to)}${onlyId ? ` · ${students[0]?.name || ''}` : ' · tüm öğrenciler'}`], [],
         ['Öğrenci', 'Yapılan ders', 'Yapılmayan ders', 'Verilen ödev', 'Gelen ödev', 'Gelmeyen ödev', ...REVIEW_FIELDS.map(([, l]) => `${l} (ort.)`), 'Değerlendirme sayısı', 'Girilmemiş değerlendirme'],
         ...summary.sort(sort),
         [], ['Puan: 5 çok iyi · 4 iyi · 3 orta · 2 kötü · 1 sıkıntılı'],

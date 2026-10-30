@@ -4,9 +4,9 @@ import { useApp, useAction, Icon, StatusChip, Sheet, Field, StudentPicker } from
 import { REASON_MAX, cleanReason, scheduleAt } from '../core/lessons.js';
 import { fmtShort, fmtDate } from '../core/dates.js';
 import { fmtTL, fmtHours, fmtNum } from '../core/money.js';
-import { PLAN_TYPES, STATUS_LABEL } from '../core/billing.js';
+import { PLAN_TYPES, STATUS_LABEL, feeBreakdown } from '../core/billing.js';
 import { ReviewSheet } from './review.jsx';
-import { reviewMap, reviewAvg } from '../core/review.js';
+import { reviewMap, reviewAvg, reviewKey } from '../core/review.js';
 
 const LESSON_CHIP = {
   done: ['ok', 'Yapıldı'],
@@ -20,7 +20,7 @@ export function LessonRow({ lesson, name, editable = true }) {
   const [run, busy] = useAction();
   const [open, setOpen] = useState(false);
   const [reviewing, setReviewing] = useState(false);
-  const review = editable && lesson.status !== 'not_held' && lesson.status !== 'upcoming' ? reviewMap(data.lesson_reviews).get(lesson.key) : null;
+  const review = editable && lesson.status !== 'not_held' && lesson.status !== 'upcoming' ? reviewMap(data.lesson_reviews).get(reviewKey(lesson)) : null;
   const canReview = editable && (lesson.status === 'done' || lesson.status === 'today');
   const [text, setText] = useState('');
   const [err, setErr] = useState('');
@@ -204,3 +204,54 @@ const fmtWeeks = (w) => {
   const r = Math.round(w * 10) / 10;
   return `${Number.isInteger(r) ? r : String(r).replace('.', ',')} hafta`;
 };
+
+/** Ücret detayları: dönem tutarı − ertelenen dersler + ek ders telafisi = ödenecek (salt okunur) */
+export function FeeDetail({ p }) {
+  const { now } = useApp();
+  const d = feeBreakdown(p, now.date);
+  return (
+    <div class="stack fee-detail" style="gap:8px">
+      <div class="table-wrap"><table class="t">
+        <tbody>
+          <tr><td>{p.truncated ? 'Dönem ücreti (öğrenci ayrıldığı için kısaltıldı)' : 'Dönem ücreti'}</td><td class="n num">{fmtTL(d.base)}</td></tr>
+          <tr><td>Ertelenen ders: <b>{fmtNum(d.missed_hours)}</b></td><td class="n num" style={d.minus ? 'color:var(--madder);font-weight:700' : ''}>{d.minus ? '−' + fmtTL(d.minus) : '0'}</td></tr>
+          <tr><td>Yapılan ek ders: <b>{fmtNum(d.extra_hours_done)}</b></td><td class="n num" style={d.plus ? 'color:var(--sage);font-weight:700' : ''}>{d.plus ? '+' + fmtTL(d.plus) : '0'}</td></tr>
+          {d.cut > 0 && <tr><td>{d.cut_label}</td><td class="n num" style="color:var(--madder)">{'−' + fmtTL(d.cut)}</td></tr>}
+          <tr><td><b>Net ücret</b></td><td class="n num"><b>{fmtTL(d.total)}</b></td></tr>
+          {d.paid > 0 && <tr><td>Ödenen{p.carried > 0 ? ` (dönemi kalmayan önceki ödemeden ${fmtTL(p.carried)} sayıldı)` : ''}</td><td class="n num">{fmtTL(d.paid)}</td></tr>}
+          <tr><td><b>Kalan</b></td><td class="n num"><b>{fmtTL(d.remaining)}</b></td></tr>
+        </tbody>
+      </table></div>
+      {d.hourly > 0 && <div class="small muted">1 ders = {fmtTL(d.hourly)} (dönem ücreti ÷ paketteki ders sayısı)</div>}
+      {d.missed.length > 0 && (
+        <div>
+          <div class="small"><b>Ertelenen / yapılmayan dersler</b> ({d.missed.length})</div>
+          <ul class="list">{d.missed.map((m, i) => (
+            <li key={i} class="spread small"><span>{fmtDate(m.date, true)} · {m.time} · {fmtHours(m.hours)}{m.reason ? ` · ${m.reason}` : ''}</span><span class="num" style="color:var(--madder)">−{fmtTL(m.value)}</span></li>
+          ))}</ul>
+        </div>
+      )}
+      {d.extras.length > 0 && (
+        <div>
+          <div class="small"><b>Ek dersler</b> ({d.extras.length})</div>
+          <ul class="list">{d.extras.map((x, i) => (
+            <li key={i} class="spread small"><span>{fmtDate(x.date, true)} · {x.time} · {fmtHours(x.hours)}{x.note ? ` · ${x.note}` : ''}{x.counted ? '' : ' · henüz yapılmadı'}</span><span class="num" style="color:var(--sage)">{x.value ? '+' + fmtTL(x.value) : '—'}</span></li>
+          ))}</ul>
+        </div>
+      )}
+      {d.missed.length === 0 && d.extras.length === 0 && <div class="small muted">Bu dönemde ertelenen ders ya da ek ders yok; ücret paket tutarıyla aynı.</div>}
+      {d.notes.map((n, i) => <div key={i} class="small muted">{n}</div>)}
+    </div>
+  );
+}
+
+/** "Ücret detayları" açılır bölümü (Ödemeler listesinde öğrencinin altında) */
+export function FeeDetailToggle({ p }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div class="stack" style="gap:8px">
+      <button class="btn small ghost" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? '▾' : '▸'} Ücret detayları</button>
+      {open && <FeeDetail p={p} />}
+    </div>
+  );
+}
