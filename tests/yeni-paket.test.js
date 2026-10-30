@@ -95,3 +95,12 @@ test('uyarı "Tamam, sil": yalnız o uyarı gizlenir, veri değişmez, yeni olay
   assert.equal(activeWarnings(d3, now2).length, 1);
   assert.equal(activeWarnings({ ...d, settings: [] }, now).length, 1); // ayar satırı yoksa da çalışır
 });
+
+test('yeni paket: eski paketin hiç dersi yapılmadıysa (0 TL) başlatılmaz', () => {
+  // Paket Çarşamba başlar, ilk ders Cuma: ertesi gün (Perşembe) yeni paket açılırsa eski paketin dersi 0 kalır
+  const d = mk({ plans: [{ ...plan, valid_from: '2026-09-02' }], schedules: [{ ...sched[0], valid_from: '2026-09-02' }] });
+  const p = studentPeriods(ali, d, '2026-09-02').find((x) => x.status === 'running');
+  const r = previewNewPackage(ali, d, p, '2026-09-03', '2026-09-02');
+  assert.equal(r.ok, false);
+  assert.ok(r.error.includes('hiç ders yapılmadı'));
+});

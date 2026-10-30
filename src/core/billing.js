@@ -267,6 +267,7 @@ export function previewNewPackage(student, data, period, start, today, settings 
   const old = after.find((p) => p.key === period.key);
   const next = after.find((p) => p.plan_id === '__yeni__' && p.seq === 1);
   if (!old || !next) return { ok: false, error: 'Önizleme hesaplanamadı; bir şey kaydedilmedi.' };
+  if (old.amount <= 0) return { ok: false, error: 'Bu pakette henüz hiç ders yapılmadı; eski paket 0 TL olacağı için yeni paket başlatılamaz. Ödemeyi "Ödemeyi kaydet" ile alın.' };
   return { ok: true, row, old, next, start };
 }
 
