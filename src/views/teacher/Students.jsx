@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'preact/hooks';
 import { useApp, useAction, Icon, Sheet, Field, Seg, Empty, WaButton, copyText, StatusChip } from '../../ui.jsx';
-import { PLAN_TYPES, STATUS_LABEL, studentPeriods, studentSummary } from '../../core/billing.js';
+import { PLAN_TYPES, STATUS_LABEL, studentPeriods, studentSummary, lessonsPerPeriod } from '../../core/billing.js';
 import { scheduleAt } from '../../core/lessons.js';
 import { TR_DAYS, TR_DAYS_SHORT, fmtDate, addDays } from '../../core/dates.js';
 import { fmtTL, parseTL, fmtHours } from '../../core/money.js';
@@ -13,7 +13,7 @@ import { PeriodBody, ExtraLessonSheet } from '../shared.jsx';
 import { TeacherVoiceNotes } from '../voice.jsx';
 import { PaymentSheet } from './Money.jsx';
 
-const FEE_LABEL = { weekly: 'Haftalık ücret (TL)', '4weekly': '4 haftalık ücret (TL)', monthly: 'Aylık ücret (TL)', oneoff: 'Paket tutarı (TL)' };
+const FEE_LABEL = { weekly: 'Bir dersin ücreti (TL)', '4weekly': 'Bir dersin ücreti (TL)', monthly: 'Bir dersin ücreti (TL)', oneoff: 'Paket tutarı (TL)' };
 // Kendi veritabanını kullanan öğretmenin linkine bağlantı eklenir: veli/öğrenci o öğretmenin MathX'ine girer
 const siteUrl = () => withConn(SITE_URL || (location.protocol.startsWith('http') ? location.origin + location.pathname : ''));
 
@@ -132,7 +132,20 @@ function validSlots(slots) {
   return null;
 }
 
-function PlanFields({ plan, setPlan, errors }) {
+// Haftalık / 4 haftalık / aylık: kutuya BİR DERSİN ücreti yazılır; paket ücreti = ders başı ücret × dönemdeki ders sayısı.
+const byLesson = (type) => type !== 'oneoff';
+function packageFee(plan, slots, start) {
+  if (!byLesson(plan.type)) return parseTL(plan.fee);
+  const n = lessonsPerPeriod(plan.type, slots, start);
+  const fee = Math.round(parseTL(plan.fee) * n);
+  // Kutudaki ders başı ücret kuruşa yuvarlandığı için mevcut ücretle ±n kuruş farkı yuvarlamadır: mevcut ücret aynen kalır.
+  return plan.origFee != null && plan.origType === plan.type && Math.abs(fee - plan.origFee) <= n ? plan.origFee : fee;
+}
+
+function PlanFields({ plan, setPlan, errors, slots, start }) {
+  const n = byLesson(plan.type) ? lessonsPerPeriod(plan.type, slots, start) : 0;
+  const unit = parseTL(plan.fee);
+  const total = unit > 0 ? packageFee(plan, slots, start) : 0;
   return (
     <>
       <Field label="Ödeme türü" required>
@@ -140,7 +153,7 @@ function PlanFields({ plan, setPlan, errors }) {
       </Field>
       <div class="grid2">
         <Field label={FEE_LABEL[plan.type]} required error={errors.fee}>
-          <input class="input" inputMode="decimal" value={plan.fee} onInput={(e) => { const v = e.currentTarget.value; setPlan((o) => ({ ...o, fee: v })); }} placeholder="Ör. 4.000" />
+          <input class="input" inputMode="decimal" value={plan.fee} onInput={(e) => { const v = e.currentTarget.value; setPlan((o) => ({ ...o, fee: v })); }} placeholder={plan.type === 'oneoff' ? 'Ör. 4.000' : 'Ör. 1.200'} />
         </Field>
         {plan.type === 'oneoff' && (
           <Field label="Kaç derslik paket" required error={errors.hours}>
@@ -153,20 +166,28 @@ function PlanFields({ plan, setPlan, errors }) {
           <input class="input" type="date" value={plan.due_date} onInput={(e) => { const v = e.currentTarget.value; setPlan((o) => ({ ...o, due_date: v })); }} />
         </Field>
       )}
+      {byLesson(plan.type) && (
+        <div class="hint">
+          {n <= 0 ? 'Önce ders günü ekleyin; paket ücreti ders sayısına göre hesaplanır.'
+            : unit > 0 ? <><b>{fmtHours(n)}</b> × {fmtTL(unit)} = <b>{fmtTL(total)}</b> paket ücreti. Ödeme, gerçekten yapılan ders sayısı × bir dersin ücreti olarak çıkar; yapılmayan ders düşer, telafi (ek) ders eklenir.</>
+            : `Bir dersin ücretini yazın. Ödeme, yapılan ders sayısı × bu ücret olarak çıkar (pakette ${fmtHours(n)} var).`}
+        </div>
+      )}
       <div class="hint">
-        {plan.type === 'monthly' && 'Yapılmayan ders × (aylık ücret ÷ o ayın ders sayısı) tutardan düşülür. Gecikme uyarısı son tarihten 3 gün sonra.'}
-        {plan.type === '4weekly' && 'Yapılmayan dersler 4 hafta sonunda tutardan düşülür. Gecikme uyarısı son tarihten 5 gün sonra.'}
-        {plan.type === 'weekly' && 'Her hafta sonunda ödeme zamanı gelir; yapılmayan ders düşülür.'}
+        {plan.type === 'monthly' && 'Gecikme uyarısı son tarihten 3 gün sonra.'}
+        {plan.type === '4weekly' && 'Gecikme uyarısı son tarihten 5 gün sonra.'}
+        {plan.type === 'weekly' && 'Her hafta sonunda ödeme zamanı gelir.'}
         {plan.type === 'oneoff' && 'Tek seferlik paket: tutar sabittir; kullanılan ders takip edilir.'}
       </div>
     </>
   );
 }
 
-function checkPlan(plan) {
+function checkPlan(plan, slots, start) {
   const e = {};
   const fee = parseTL(plan.fee);
   if (!(fee > 0)) e.fee = 'Geçerli bir tutar yazın.';
+  else if (byLesson(plan.type) && !(packageFee(plan, slots, start) > 0)) e.fee = 'Önce ders günü ekleyin.';
   if (plan.type === 'oneoff') {
     const h = Number(String(plan.hours).replace(',', '.'));
     if (!(h > 0)) e.hours = 'Ders sayısını yazın.';
@@ -174,8 +195,8 @@ function checkPlan(plan) {
   }
   return e;
 }
-const planRow = (plan, student_id, valid_from) => ({
-  student_id, valid_from, type: plan.type, fee: parseTL(plan.fee),
+const planRow = (plan, student_id, valid_from, slots) => ({
+  student_id, valid_from, type: plan.type, fee: packageFee(plan, slots, valid_from),
   hours: plan.type === 'oneoff' ? Number(String(plan.hours).replace(',', '.')) : null,
   due_date: plan.type === 'oneoff' ? plan.due_date : null,
 });
@@ -201,7 +222,7 @@ function StudentForm({ onClose }) {
   const set = (k) => (e) => { const v = e.currentTarget.type === 'checkbox' ? e.currentTarget.checked : e.currentTarget.value; setF((o) => ({ ...o, [k]: v })); };
 
   const save = async () => {
-    const e = { ...checkPlan(plan) };
+    const e = { ...checkPlan(plan, slots, f.start_date) };
     if (f.name.trim().length < 2) e.name = 'Ad soyad yazın.';
     if (!isValidPhone(f.phone)) e.phone = 'Geçerli bir cep telefonu yazın (05xx xxx xx xx).';
     if (f.parent_name.trim().length < 2) e.parent_name = 'Veli adını yazın.';
@@ -227,7 +248,7 @@ function StudentForm({ onClose }) {
       });
       try {
         await store.insert('schedules', { student_id: s.id, valid_from: f.start_date, slots });
-        await store.insert('plans', planRow(plan, s.id, f.start_date));
+        await store.insert('plans', planRow(plan, s.id, f.start_date, slots));
         await store.createAccount({ username: su, password: pw[0], role: 'student', student_id: s.id });
         if (sib) {
           // Veli yeni hesap açılmaz: kardeşinin veli hesabı bu öğrenciyi de görür
@@ -265,7 +286,7 @@ function StudentForm({ onClose }) {
           <div />
         </Field>
         <SlotEditor slots={slots} setSlots={setSlots} />
-        <PlanFields plan={plan} setPlan={setPlan} errors={errors} />
+        <PlanFields plan={plan} setPlan={setPlan} errors={errors} slots={slots} start={f.start_date} />
 
         <div class="section-head" style="margin-top:10px"><h3 class="section-title" style="font-size:18px">Giriş bilgileri</h3></div>
         <Field label="Veli hesabı" hint={sibId !== null ? 'Veli tek kullanıcı adı ve tek şifreyle iki (ya da daha çok) çocuğunu birden görür. Ders, ödeme ve ödevler yine ayrı tutulur.' : 'Bu öğrencinin kardeşine zaten ders veriyorsanız "Kardeşi kayıtlı"yı seçin.'}>
@@ -650,11 +671,17 @@ function ProgramSheet({ s, sch, plan, onClose }) {
   const [run, busy] = useAction();
   const [from, setFrom] = useState(now.date);
   const [slots, setSlots] = useState(sch?.slots?.map((x) => ({ ...x })) || []);
-  const [p, setP] = useState(plan ? { type: plan.type, fee: String(plan.fee / 100).replace('.', ','), hours: plan.hours ? String(plan.hours) : '', due_date: plan.due_date || '' } : { type: '4weekly', fee: '', hours: '', due_date: '' });
+  const [p, setP] = useState(() => {
+    if (!plan) return { type: '4weekly', fee: '', hours: '', due_date: '' };
+    // Ders başı türlerde kutuda mevcut paket ücretinin ders başına karşılığı görünür; değişmezse ücret aynen kalır.
+    const n = byLesson(plan.type) ? lessonsPerPeriod(plan.type, sch?.slots || [], now.date) : 0;
+    const unit = byLesson(plan.type) ? (n > 0 ? plan.fee / n : plan.fee) : plan.fee;
+    return { type: plan.type, fee: String(Math.round(unit) / 100).replace('.', ','), hours: plan.hours ? String(plan.hours) : '', due_date: plan.due_date || '', origFee: plan.fee, origType: plan.type };
+  });
   const [errors, setErrors] = useState({});
   const [changePlan, setChangePlan] = useState(false);
   const save = async () => {
-    const e = changePlan ? checkPlan(p) : {};
+    const e = changePlan ? checkPlan(p, slots, from) : {};
     const sErr = validSlots(slots); if (sErr) e.slots = sErr;
     if (!from) e.from = 'Tarih seçin.';
     if (from < s.start_date) e.from = 'Başlangıç tarihinden önce olamaz.';
@@ -665,8 +692,8 @@ function ProgramSheet({ s, sch, plan, onClose }) {
       if (same(sch)) await store.update('schedules', sch.id, { slots });
       else await store.insert('schedules', { student_id: s.id, valid_from: from, slots });
       if (changePlan) {
-        if (same(plan)) await store.update('plans', plan.id, planRow(p, s.id, from));
-        else await store.insert('plans', planRow(p, s.id, from));
+        if (same(plan)) await store.update('plans', plan.id, planRow(p, s.id, from, slots));
+        else await store.insert('plans', planRow(p, s.id, from, slots));
       }
       await reload();
     }, 'Değişiklik kaydedildi');
@@ -681,7 +708,7 @@ function ProgramSheet({ s, sch, plan, onClose }) {
         <Field label="Haftalık ders programı" required error={errors.slots}><div /></Field>
         <SlotEditor slots={slots} setSlots={setSlots} />
         <label class="check"><input type="checkbox" checked={changePlan} onChange={(e) => setChangePlan(e.currentTarget.checked)} /> Ödeme türünü / ücreti de değiştir</label>
-        {changePlan && <PlanFields plan={p} setPlan={setP} errors={errors} />}
+        {changePlan && <PlanFields plan={p} setPlan={setP} errors={errors} slots={slots} start={from} />}
         {changePlan && <div class="hint">Süren dönem bu tarihte kapanır; o dönemin tutarı yapılan ders oranında hesaplanır, yeni dönem bu tarihte başlar.</div>}
         <button class="btn primary block" disabled={busy} onClick={save}>Kaydet</button>
       </div>

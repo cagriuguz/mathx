@@ -1,7 +1,8 @@
 import { Fragment } from 'preact';
-import { useMemo, useState } from 'preact/hooks';
-import { useApp, useAction, Tabs, Icon, Field, Empty, Sheet, WaButton, Seg, StatusChip } from '../../ui.jsx';
-import { isOpen, allPeriods, PAY_METHODS, PLAN_TYPES, STATUS_LABEL } from '../../core/billing.js';
+import { useMemo, useRef, useState } from 'preact/hooks';
+import { useApp, useAction, Tabs, Icon, Field, Empty, Sheet, WaButton, Seg, StatusChip, StudentPicker } from '../../ui.jsx';
+import { isOpen, allPeriods, PAY_METHODS, PLAN_TYPES, STATUS_LABEL, canStartNewPackage, previewNewPackage, feeBreakdown } from '../../core/billing.js';
+import { buildXlsx, downloadBlob } from '../../core/xlsx.js';
 import {
   paymentGroups, paymentsCsv, incomeWeeks, incomeForecast, rangeEarnings, monthView, monthsOutlook, expenseList,
   yearSummary, incomeByStudent, EXPENSE_CATEGORIES, CRITICAL_AFTER_DAYS,
@@ -9,7 +10,7 @@ import {
 import { msgPaymentLate, msgPackageFull, msgPaymentReceived } from '../../core/messages.js';
 import { fmtTL, parseTL, fmtHours } from '../../core/money.js';
 import { fmtDate, fmtShort, fmtMonth, monthKey, monthFirst, addMonths, addDays, monthLast, weekStart } from '../../core/dates.js';
-import { PeriodBody, periodRange } from '../shared.jsx';
+import { PeriodBody, periodRange, FeeDetail, FeeDetailToggle } from '../shared.jsx';
 
 export function Money() {
   const [tab, setTab] = useState('pay');
@@ -34,8 +35,69 @@ const PAY_TABS = [
   ['late', 'Gecikmiş', 'Hatırlatma günü geçti.'],
   ['critical', 'Kritik', `Hatırlatma gününden ${CRITICAL_AFTER_DAYS} günden fazla geçmiş ödemeler.`],
   ['paid', 'Ödenen', 'Borcu tamamen kapanmış dönemler.'],
+  ['student', 'Öğrenci', 'Bir öğrenci seçin: tüm ödemeleri, yöntemi (nakit/havale) ve notlarıyla görün.'],
   ['history', 'Kayıtlar', 'Alınan tüm ödemeler (kısmi ödemeler ayrı satırdır).'],
 ];
+
+/** Bir ödeme satırı: tarih · tutar · yöntem · NOT (okunur, silik değil) */
+function PayLine({ p, period }) {
+  return (
+    <li class="spread small" style="align-items:flex-start;gap:10px">
+      <div class="grow">
+        <div>{fmtDate(p.paid_date)} · <span class="chip info">{PAY_METHODS[p.method] || p.method}</span></div>
+        {period && <div class="muted">{periodRange(period)}</div>}
+        {p.note ? <div style="margin-top:2px">📝 {p.note}</div> : null}
+      </div>
+      <b class="num">{fmtTL(p.amount)}</b>
+    </li>
+  );
+}
+
+/** Ödemeler → Öğrenci: öğrenci seçilir, tüm ödemeleri yöntem ve notlarıyla görünür */
+function StudentPayments({ onPay }) {
+  const { data, periods } = useApp();
+  const [sid, setSid] = useState('');
+  const pays = useMemo(() => data.payments.filter((p) => p.student_id === sid && !p.deleted_at)
+    .sort((a, b) => b.paid_date.localeCompare(a.paid_date) || String(b.created_at).localeCompare(String(a.created_at))), [data.payments, sid]);
+  const mine = useMemo(() => periods.filter((p) => p.student_id === sid), [periods, sid]);
+  const perByKey = useMemo(() => new Map(mine.map((p) => [p.key, p])), [mine]);
+  const received = pays.filter((p) => p.method !== 'indirim').reduce((a, p) => a + p.amount, 0);
+  const owed = mine.filter(isOpen).reduce((a, p) => a + p.remaining, 0);
+  const openPeriods = mine.filter((p) => (p.status === 'running' || p.status === 'due' || p.status === 'late') && p.remaining > 0);
+  return (
+    <div class="stack">
+      <StudentPicker students={data.students} value={sid} onChange={setSid} label="Öğrenci" extra={(x) => (x.active === false ? ' (pasif)' : '')} />
+      {sid && (
+        <>
+          <div class="card figures">
+            <Fig v={fmtTL(received)} l="Toplam alınan" tone={received ? 'ok' : ''} />
+            <Fig v={fmtTL(owed)} l="Vadesi gelen borç" tone={owed ? 'warn' : ''} />
+            <Fig v={String(pays.length)} l="Ödeme kaydı" />
+          </div>
+          {openPeriods.length > 0 && (
+            <div class="card">
+              <ul class="list">
+                {openPeriods.map((p) => (
+                  <li key={p.key} class="stack">
+                    <PeriodBody p={p} showName={false} />
+                    <FeeDetailToggle p={p} />
+                    <div class="row wrap"><button class="btn small primary" onClick={() => onPay(p)}>Ödeme al</button></div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <div class="section-head"><h2 class="section-title">Ödemeler</h2></div>
+          <div class="card card-pad">
+            {pays.length === 0 ? <Empty title="Bu öğrenci için ödeme kaydı yok" /> : (
+              <ul class="list">{pays.map((p) => <PayLine key={p.id} p={p} period={perByKey.get(p.period_key)} />)}</ul>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 function Payments() {
   const { data, periods, now, store, reload } = useApp();
@@ -70,9 +132,9 @@ function Payments() {
         <Fig v={fmtTL(sum(groups.due))} l="Ödeme zamanı gelen" />
         <Fig v={fmtTL(sum(periods.filter((p) => (p.status === 'running' || p.status === 'future') && p.remaining > 0 && p.due <= addDays(now.date, 14))))} l="14 gün içinde gelecek" />
       </div>
-      <Seg cls="many" options={PAY_TABS.map(([k, t]) => [k, `${t} ${counts[k] ?? 0}`])} value={tab} onChange={setView} />
+      <Seg cls="many" options={PAY_TABS.map(([k, t]) => [k, k === 'student' ? t : `${t} ${counts[k] ?? 0}`])} value={tab} onChange={setView} />
       <div class="hint" style="padding:0 4px">{meta[2]}</div>
-      {tab !== 'history' ? (
+      {tab === 'student' ? <StudentPayments onPay={setPaying} /> : tab !== 'history' ? (
         <>
           {tab !== 'paid' && groups[tab].length > 0 && <div class="sumline">Toplam kalan: <b class="num">{fmtTL(sum(groups[tab]))}</b> · {groups[tab].length} kayıt</div>}
           <div class="card">
@@ -83,6 +145,11 @@ function Payments() {
                   return (
                     <li key={p.key} class="stack">
                       <PeriodBody p={p} />
+                      <FeeDetailToggle p={p} />
+                      {tab === 'paid' && (() => {
+                        const ps = data.payments.filter((x) => x.period_key === p.key && !x.deleted_at).sort((a, b) => a.paid_date.localeCompare(b.paid_date));
+                        return ps.length ? <ul class="list">{ps.map((x) => <PayLine key={x.id} p={x} />)}</ul> : null;
+                      })()}
                       {tab !== 'paid' && (
                         <div class="row wrap">
                           <button class="btn small primary" onClick={() => setPaying(p)}>Ödeme al</button>
@@ -130,7 +197,7 @@ function Payments() {
 }
 
 export function PaymentSheet({ period, onClose }) {
-  const { data, store, reload, now } = useApp();
+  const { data, store, reload, now, settings } = useApp();
   const [run, busy] = useAction();
   const [amount, setAmount] = useState(String((period.remaining || period.amount) / 100).replace('.', ','));
   const [date, setDate] = useState(now.date);
@@ -138,31 +205,97 @@ export function PaymentSheet({ period, onClose }) {
   const [note, setNote] = useState('');
   const [err, setErr] = useState('');
   const [done, setDone] = useState(null);
+  const [pack, setPack] = useState(null); // yeni pakete geç adımı: { start, amount }
+  const [newPlan, setNewPlan] = useState(null); // eklenen yeni paketin kaydı (geri almak için)
+  const [undone, setUndone] = useState(false);
+  const paidId = useRef(null); // ödeme bu pencerede kaydedildiyse tekrar denemede ikinci kez kaydedilmesin
   const s = data.students.find((x) => x.id === period.student_id);
+  const canPack = canStartNewPackage(period, now.date);
+  const preview = useMemo(() => (pack && s ? previewNewPackage(s, data, period, pack.start, now.date, settings) : null), [pack?.start, data, period, now.date, settings]);
+
+  const check = () => {
+    const k = parseTL(amount);
+    if (!(k > 0)) { setErr('Geçerli bir tutar yazın.'); return null; }
+    if (!date) { setErr('Tarih seçin.'); return null; }
+    if (date > now.date && !confirm('Ödeme tarihi ileri bir gün. Yine de kaydedilsin mi?')) return null;
+    setErr('');
+    return k;
+  };
+  const insertPayment = (k) => store.insert('payments', { student_id: period.student_id, period_key: period.key, amount: k, paid_date: date, method, note: note.trim(), deleted_at: null, created_at: new Date().toISOString() });
 
   const save = async () => {
-    const k = parseTL(amount);
-    if (!(k > 0)) return setErr('Geçerli bir tutar yazın.');
-    if (!date) return setErr('Tarih seçin.');
-    if (date > now.date && !confirm('Ödeme tarihi ileri bir gün. Yine de kaydedilsin mi?')) return;
+    const k = check();
+    if (k === null) return;
     if (k > period.remaining && period.remaining > 0 && !confirm(`Yazılan tutar kalan borçtan (${fmtTL(period.remaining)}) fazla. Yine de kaydedilsin mi?`)) return;
-    setErr('');
     await run(async () => {
-      await store.insert('payments', { student_id: period.student_id, period_key: period.key, amount: k, paid_date: date, method, note: note.trim(), deleted_at: null, created_at: new Date().toISOString() });
+      await insertPayment(k);
       await reload();
       setDone(k);
     }, 'Ödeme kaydedildi');
   };
 
+  // 1. adım: yalnız inceleme; hiçbir şey kaydedilmez
+  const goPack = () => {
+    if (check() === null) return;
+    const start = addDays(now.date, 1);
+    const pv = previewNewPackage(s, data, period, start, now.date, settings);
+    setPack({ start, amount: pv.ok ? String(pv.old.remaining / 100).replace('.', ',') : amount });
+  };
+
+  const savePack = async () => {
+    const k = parseTL(pack.amount);
+    if (!(k > 0)) return setErr('Geçerli bir tutar yazın.');
+    if (!preview?.ok) return setErr(preview?.error || 'Yeni paket hesaplanamadı.');
+    if (k > preview.old.remaining && preview.old.remaining >= 0 && !confirm(`Yazılan tutar eski paketin kalan borcundan (${fmtTL(preview.old.remaining)}) fazla. Yine de devam edilsin mi?`)) return;
+    if (!confirm(`EMİN MİSİNİZ?\n\n• ${fmtTL(k)} ödeme kaydedilecek.\n• Eski paket ${fmtShort(pack.start)} tarihinden önce kapanacak (tutarı ${fmtTL(preview.old.amount)} olur).\n• ${PLAN_TYPES[preview.row.type]} yeni paket ${fmtDate(pack.start)} günü başlayacak (ücret ${fmtTL(preview.row.fee)}).\n\nBu işlem yanlışsa hemen sonra "Yeni paketi geri al" ile döndürebilirsiniz.`)) return;
+    setErr('');
+    const ok = await run(async () => {
+      if (!paidId.current) paidId.current = (await insertPayment(k)).id;
+      const plan = await store.insert('plans', preview.row);
+      setNewPlan(plan);
+      await reload();
+      setDone(k);
+    }, 'Ödeme kaydedildi, yeni paket başladı');
+    if (!ok && paidId.current) setErr('Ödeme kaydedildi ancak yeni paket başlatılamadı. Aşağıdaki düğmeyle tekrar deneyin; ödeme ikinci kez kaydedilmez.');
+  };
+
+  const undoPack = async () => {
+    if (!confirm('Yeni paket geri alınsın mı? Alınan ödeme kaydı kalır, yalnız yeni paket kaldırılır ve eski paket eski hâline döner.')) return;
+    const ok = await run(async () => { await store.remove('plans', newPlan.id); await reload(); }, 'Yeni paket geri alındı');
+    if (ok) setUndone(true);
+  };
+
   return (
-    <Sheet title={done ? 'Ödeme alındı' : 'Ödeme al'} onClose={onClose}>
+    <Sheet title={done ? 'Ödeme alındı' : pack ? 'Ödeme al ve yeni pakete geç' : 'Ödeme al'} onClose={onClose}>
       {done ? (
         <div class="stack">
           <div class="msg">{msgPaymentReceived(done)}</div>
+          {newPlan && !undone && <div class="hint">Yeni {PLAN_TYPES[newPlan.type]} paket {fmtDate(newPlan.valid_from)} günü başladı.</div>}
+          {undone && <div class="hint">Yeni paket geri alındı; ödeme kaydı duruyor.</div>}
           <div class="row wrap">
             {method !== 'indirim' && <WaButton phone={s?.parent_phone} text={msgPaymentReceived(done)} label="Veliye teşekkür mesajı" />}
+            {newPlan && !undone && <button class="btn ghost" disabled={busy} onClick={undoPack}>Yeni paketi geri al</button>}
             <button class="btn" onClick={onClose}>Tamam</button>
           </div>
+        </div>
+      ) : pack ? (
+        <div class="stack">
+          <div class="card card-pad"><PeriodBody p={period} /></div>
+          <Field label="Yeni paketin başlangıç günü" hint="Bu günden önceki dersler eski pakette kalır."><input class="input" type="date" value={pack.start} onInput={(e) => setPack({ ...pack, start: e.currentTarget.value })} /></Field>
+          {preview?.ok ? (
+            <>
+              <div class="kv4">
+                <div><span>Eski paket (yeni hâli)</span><b>{fmtTL(preview.old.amount)}</b></div>
+                <div><span>Daha önce ödenen</span><b>{fmtTL(preview.old.paid)}</b></div>
+                <div><span>Kalan borç</span><b>{fmtTL(preview.old.remaining)}</b></div>
+              </div>
+              <div class="hint">Eski paket {periodRange(preview.old)} olarak kapanır. Yeni paket: <b>{PLAN_TYPES[preview.row.type]}</b>, {fmtDate(preview.next.start)} – {fmtDate(preview.next.end)}, ücret {fmtTL(preview.row.fee)}.</div>
+            </>
+          ) : <div class="error">{preview?.error}</div>}
+          <Field label="Alınan tutar (TL)" required hint={`${fmtDate(date)} · ${PAY_METHODS[method]}${note.trim() ? ' · ' + note.trim() : ''}`}><input class="input" inputMode="decimal" value={pack.amount} onInput={(e) => setPack({ ...pack, amount: e.currentTarget.value })} /></Field>
+          {err && <div class="error">{err}</div>}
+          <button class="btn primary block" disabled={busy || !preview?.ok} onClick={savePack}>Ödemeyi kaydet ve yeni paketi başlat</button>
+          <button class="btn ghost block" disabled={busy} onClick={() => { setPack(null); setErr(''); }}>Geri dön (hiçbir şey kaydedilmedi)</button>
         </div>
       ) : (
         <div class="stack">
@@ -184,6 +317,8 @@ export function PaymentSheet({ period, onClose }) {
           <Field label="Not (isteğe bağlı)"><input class="input" value={note} onInput={(e) => setNote(e.currentTarget.value)} /></Field>
           {err && <div class="error">{err}</div>}
           <button class="btn primary block" disabled={busy} onClick={save}>Ödemeyi kaydet</button>
+          {canPack && <button class="btn block" disabled={busy} onClick={goPack}>Ödeme al ve yeni pakete geç</button>}
+          {canPack && <div class="hint">Ara ödeme alıp paketi bölmek için: yapılan ders kadar ödeme alınır, yeni paket ertesi gün başlar. İkinci düğme önce inceleme gösterir, kaydetmeden sorar.</div>}
         </div>
       )}
     </Sheet>
@@ -576,6 +711,8 @@ function Accounting() {
         </table></div>
       </div>
 
+      <FeeStatement />
+
       <div class="section-head"><h2 class="section-title">Öğrenci bazında tahsilat</h2><span class="muted small">{mv.label}</span></div>
       <div class="card">
         {byStudent.length === 0 ? <Empty title="Bu ay tahsilat yok" /> : (
@@ -585,6 +722,68 @@ function Accounting() {
       {editing && <ExpenseSheet month={month} expense={editing.id ? editing : null} onClose={() => setEditing(null)} />}
       {paying && <ExpensePaySheet inst={paying} onClose={() => setPaying(null)} />}
     </div>
+  );
+}
+
+/** Muhasebe → Ücret dökümü: öğrenci seç, her dönemin hesabı (ertelenen dersler düşülür, ek ders tekrar eklenir) + Excel */
+function FeeStatement() {
+  const { data, periods, now, toast } = useApp();
+  const [sid, setSid] = useState('');
+  const mine = useMemo(() => periods.filter((p) => p.student_id === sid && p.status !== 'future').sort((a, b) => b.start.localeCompare(a.start)), [periods, sid]);
+  const st = data.students.find((x) => x.id === sid);
+  const tot = mine.reduce((a, p) => {
+    const d = feeBreakdown(p, now.date);
+    return { fee: a.fee + p.base, ded: a.ded + p.deduction, minus: a.minus + d.minus, plus: a.plus + d.plus, cut: a.cut + d.cut, mh: a.mh + d.missed_hours, eh: a.eh + d.extra_hours_done, amount: a.amount + p.amount, paid: a.paid + p.paid, rem: a.rem + p.remaining };
+  }, { fee: 0, ded: 0, minus: 0, plus: 0, cut: 0, mh: 0, eh: 0, amount: 0, paid: 0, rem: 0 });
+  const excel = () => {
+    try {
+      const rows = [['Dönem', 'Tür', 'Dönem tutarı', 'Yapılmayan ders (saat)', 'Düşülen', 'Ek ders (saat)', 'Telafi eklenen', 'Dönem ücreti', 'Ödenen', 'Kalan', 'Durum']];
+      const dets = [['Dönem', 'Tür', 'Tarih', 'Saat', 'Süre (saat)', 'Açıklama', 'Tutara etkisi']];
+      for (const p of [...mine].reverse()) {
+        const d = feeBreakdown(p, now.date);
+        const minus = d.lines.find((l) => l.kind === 'minus'), plus = d.lines.find((l) => l.kind === 'plus');
+        rows.push([periodRange(p), PLAN_TYPES[p.type], p.base / 100, p.missed_hours, minus ? -minus.amount / 100 : 0, p.extra_hours, plus ? plus.amount / 100 : 0, p.amount / 100, p.paid / 100, p.remaining / 100, STATUS_LABEL[p.status]]);
+        for (const m of d.missed) dets.push([periodRange(p), 'Ertelenen ders', fmtDate(m.date), m.time, m.hours, m.reason, -m.value / 100]);
+        for (const x of d.extras) dets.push([periodRange(p), 'Ek ders', fmtDate(x.date), x.time, x.hours, x.note || (x.counted ? '' : 'henüz yapılmadı'), x.value / 100]);
+      }
+      rows.push([], ['Toplam', '', tot.fee / 100, '', tot.ded / 100, '', '', tot.amount / 100, tot.paid / 100, tot.rem / 100]);
+      downloadBlob(buildXlsx([
+        { name: 'Dönemler', widths: [28, 12, 14, 14, 12, 12, 14, 14, 12, 12, 16], rows: [[`Ücret dökümü: ${st.name}`], [], ...rows], headerRow: 2 },
+        { name: 'Dersler', widths: [28, 16, 14, 8, 10, 30, 14], rows: dets, headerRow: 0 },
+      ]), `MathX-ucret-dokumu-${st.name.replace(/\s+/g, '-')}-${now.date}.xlsx`);
+      toast('Excel dosyası indirildi');
+    } catch (e) { toast('Excel hazırlanamadı: ' + (e.message || e)); }
+  };
+  return (
+    <>
+      <div class="section-head"><h2 class="section-title">Ücret dökümü</h2><span class="muted small">öğrenci bazında</span></div>
+      <div class="card card-pad stack">
+        <div class="hint">Öğrenciyi seçin: her ödeme döneminde ertelenen derslerin ücretten nasıl düşüldüğünü, ek ders yapılınca tutarın nasıl tekrar eklendiğini görün.</div>
+        <StudentPicker students={data.students} value={sid} onChange={setSid} label="Öğrenci" extra={(x) => (x.active === false ? ' (pasif)' : '')} />
+      </div>
+      {sid && (mine.length === 0 ? <div class="card"><Empty title="Bu öğrencinin henüz başlamış ödeme dönemi yok" /></div> : (
+        <>
+          <div class="card figures">
+            <Fig v={fmtTL(tot.fee)} l="Dönem tutarları" />
+            <Fig v={tot.minus ? '−' + fmtTL(tot.minus) : '0'} l={`Ertelenen ders: ${tot.mh}`} tone={tot.minus ? 'bad' : ''} />
+            <Fig v={tot.plus ? '+' + fmtTL(tot.plus) : '0'} l={`Yapılan ek ders: ${tot.eh}`} tone={tot.plus ? 'ok' : ''} />
+            {tot.cut > 0 && <Fig v={'−' + fmtTL(tot.cut)} l="Paket aşımı / gün değişikliği düşüşü" tone="bad" />}
+            <Fig v={fmtTL(tot.amount)} l="Net ücret (toplam)" />
+            <Fig v={fmtTL(tot.paid)} l="Ödenen" tone="ok" />
+            <Fig v={fmtTL(tot.rem)} l="Kalan" tone={tot.rem ? 'warn' : ''} />
+          </div>
+          <button class="btn" onClick={excel}><Icon name="report" /> Ücret dökümünü Excel olarak indir</button>
+          <div class="card">
+            <ul class="list">{mine.map((p) => (
+              <li key={p.key} class="stack">
+                <PeriodBody p={p} showName={false} />
+                <FeeDetail p={p} />
+              </li>
+            ))}</ul>
+          </div>
+        </>
+      ))}
+    </>
   );
 }
 
