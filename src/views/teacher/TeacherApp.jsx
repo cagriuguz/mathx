@@ -9,6 +9,8 @@ import { monthKey, fmtDate } from '../../core/dates.js';
 import { buildNotifications } from '../../core/notify.js';
 import { missingReviews, studentWarnings } from '../../core/review.js';
 import { ReviewSheet } from '../review.jsx';
+import { StudyPanelSection } from '../calisma.jsx';
+import { studyMissed } from '../../core/calisma.js';
 import { LessonRow, PeriodBody } from '../shared.jsx';
 import { Lessons } from './Lessons.jsx';
 import { Students } from './Students.jsx';
@@ -53,7 +55,7 @@ export function TeacherApp() {
   }, [doneIds.join()]);
 
   const lateCount = periods.filter((p) => isOpen(p) && p.status === 'late').length;
-  const notifCount = buildNotifications(data, periods, now.date).count + missingReviews(data, now).length + studentWarnings(data, now).length;
+  const notifCount = buildNotifications(data, periods, now.date).count + missingReviews(data, now).length + studentWarnings(data, now).length + studyMissed(data, now).length;
   const nav = NAV.map((n) => ({ ...n, dot: (n.key === 'panel' && notifCount > 0) || (n.key === 'homework' && doneIds.length > 0) || (n.key === 'money' && lateCount > 0) }));
   const cur = NAV.find((n) => n.key === tab) || NAV[0];
 
@@ -163,6 +165,8 @@ function Panel({ go }) {
           )}
         </div>
       </section>
+
+      <StudyPanelSection />
 
       <section>
         <div class="section-head"><h2 class="section-title">Öğrenci değerlendirmesi</h2>{missing.length + warns.length > 0 && <span class="chip bad">{missing.length + warns.length}</span>}</div>

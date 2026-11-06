@@ -10,6 +10,7 @@ import { PeriodBody, MissedList } from '../shared.jsx';
 import { HomeworkCard } from '../student/StudentApp.jsx';
 import { ParentVoiceNotes } from '../voice.jsx';
 import { PasswordSheet } from '../password.jsx';
+import { StudyParentCard } from '../calisma.jsx';
 import { hwState } from '../../core/hwitems.js';
 
 const NAV = [
@@ -66,7 +67,7 @@ export function ParentApp() {
             ))}
           </div>
         )}
-        {tab === 'hw' && <ParentHomework key={s.id} />}
+        {tab === 'hw' && <><StudyParentCard student={s} /><ParentHomework key={s.id} /></>}
         {tab === 'lessons' && <ParentLessons key={s.id} s={s} />}
         {tab === 'pay' && <ParentPayments key={s.id} />}
       </AppCtx.Provider>

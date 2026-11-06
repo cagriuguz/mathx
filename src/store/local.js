@@ -216,6 +216,18 @@ export function createLocalStore() {
       }
       write(db);
     },
+    // Supabase'teki log_study ile aynı kural: yalnız öğrenci, takip açıksa, bugünün tarihiyle
+    async logStudy(note) {
+      const s = session();
+      if (s.role !== 'student') throw new Error('Yetki yok');
+      if (!(db.study_plans || []).some((p) => p.student_id === s.student_id && p.enabled)) throw new Error('Çalışma takibi açık değil');
+      const date = localNow().date;
+      const cur = (db.study_logs ||= []).find((l) => l.student_id === s.student_id && l.date === date);
+      const note60 = String(note || '').slice(0, 60);
+      if (cur) Object.assign(cur, { status: 'done', note: note60 });
+      else db.study_logs.push({ id: uid(), student_id: s.student_id, date, status: 'done', note: note60, created_at: new Date().toISOString() });
+      write(db);
+    },
     async setHomeworkDone(id, done) {
       const s = session();
       const h = db.homework.find((x) => x.id === id);

@@ -481,3 +481,17 @@ table.t tr.current td { background: var(--brass-soft); }
 .score-row { display: grid; gap: 6px; }
 .score-row .score-label { display: flex; justify-content: space-between; align-items: baseline; font-weight: 600; font-size: 14px; }
 .score-row .score-label small { font-weight: 500; color: var(--muted, #6b6b6b); }
+
+/* ÇALIŞMA TAKİBİ: haftalık 7 kutu (renk tek başına anlam taşımaz: her kutuda işaret var) */
+.seg.two { grid-template-columns: 1fr 1fr; }
+.seg.seven { grid-template-columns: repeat(7, 1fr); grid-auto-flow: row; }
+.seg.seven button { padding: 10px 0; font-size: 13px; }
+.study-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+.study-day { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface); min-height: 48px; }
+.study-day .l { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.study-day .m { font-size: 16px; font-weight: 700; line-height: 1.1; }
+.study-day.today { border-color: var(--ink); }
+.study-day.done { background: var(--sage-soft); color: var(--sage); }
+.study-day.missed, .study-day.handled { background: var(--madder-soft); color: var(--madder); }
+.study-day.excused { background: var(--amber-soft); color: var(--amber); }
+.study-day.none { background: transparent; border-style: dashed; opacity: .55; }

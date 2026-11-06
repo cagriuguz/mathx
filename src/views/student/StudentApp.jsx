@@ -6,6 +6,7 @@ import { fmtDate, fmtShort } from '../../core/dates.js';
 import { HomeworkItems, ItemAnswerForm } from '../hwitems.jsx';
 import { hwState, HW_CHIP } from '../../core/hwitems.js';
 import { PasswordSheet } from '../password.jsx';
+import { StudyToday } from '../calisma.jsx';
 
 export function HomeworkCard({ h, readOnly }) {
   const { store, reload, now } = useApp();
@@ -40,6 +41,7 @@ export function StudentApp() {
     <Shell title={first ? `Merhaba ${first}` : 'Ödevlerim'} sub={open ? `${open} ödevin var` : 'Bütün ödevlerini bildirdin'}
       actions={<><button class="iconbtn" onClick={() => setPwOpen(true)} aria-label="Şifre değiştir"><Icon name="key" /></button><button class="iconbtn" onClick={logout} aria-label="Çıkış"><Icon name="logout" /></button></>}>
       <div class="stack" style="padding-bottom:20px">
+        <StudyToday />
         {list.length === 0 ? <div class="card"><Empty title="Henüz ödev yok" /></div> : list.map((h) => <HomeworkCard key={h.id} h={h} />)}
       </div>
       {pwOpen && <PasswordSheet onClose={() => setPwOpen(false)} />}

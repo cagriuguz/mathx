@@ -11,6 +11,7 @@ import { SITE_URL } from '../../config.js';
 import { withConn } from '../../store/conn.js';
 import { PeriodBody, ExtraLessonSheet } from '../shared.jsx';
 import { TeacherVoiceNotes } from '../voice.jsx';
+import { StudyPlanSection } from '../calisma.jsx';
 import { PaymentSheet } from './Money.jsx';
 
 const FEE_LABEL = { weekly: 'Bir dersin ücreti (TL)', '4weekly': 'Bir dersin ücreti (TL)', monthly: 'Bir dersin ücreti (TL)', oneoff: 'Paket tutarı (TL)' };
@@ -457,6 +458,8 @@ function StudentDetail({ id, onClose }) {
         </div>
 
         <TeacherVoiceNotes s={s} />
+
+        <StudyPlanSection s={s} />
 
         <section>
           <div class="section-head"><h3 class="section-title">Ödeme dönemleri</h3></div>
