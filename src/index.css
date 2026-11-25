@@ -492,6 +492,7 @@ table.t tr.current td { background: var(--brass-soft); }
 .study-day .m { font-size: 16px; font-weight: 700; line-height: 1.1; }
 .study-day.today { border-color: var(--ink); }
 .study-day.done { background: var(--sage-soft); color: var(--sage); }
-.study-day.missed, .study-day.handled { background: var(--madder-soft); color: var(--madder); }
+.study-day.notdone { background: var(--madder-soft); color: var(--madder); }
+.study-day.ask { background: var(--amber-soft); color: var(--amber); }
 .study-day.excused { background: var(--amber-soft); color: var(--amber); }
 .study-day.none { background: transparent; border-style: dashed; opacity: .55; }

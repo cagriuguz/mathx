@@ -1,19 +1,18 @@
 // ÇALIŞMA TAKİBİ: 1) güncelleme SQL'i bugünkü (yayındaki) veritabanının hiçbir kaydını değiştirmez, iki kez çalışır;
 // 2) gerçek PostgreSQL'de yetkiler (öğrenci yalnız log_study ile yazar, başkasını göremez, veli yalnız okur);
-// 3) çalışma günü / çalışmadı hesabı; 4) rastgele oturum: kapalı öğrenci asla uyarı üretmez, çalışan asla "çalışmadı" olmaz.
+// 3) çalışma günü / ertesi gün "çalıştı mı?" sorusu; 4) rastgele oturum: kapalı öğrenci asla soru üretmez, cevaplanan gün tekrar sorulmaz.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { execSync } from 'node:child_process';
 import { PGlite } from '@electric-sql/pglite';
 import { pgcrypto } from '@electric-sql/pglite/contrib/pgcrypto';
-import { dayStatus, studyMissed, studyWeek, studyWaiting, msgStudyMissed, planOf, STUDY_HOUR } from '../src/core/calisma.js';
+import { dayStatus, studyAsk, studyWeek, msgStudyDone, msgStudyNotDone, planOf } from '../src/core/calisma.js';
 import { addDays, dow } from '../src/core/dates.js';
 
 const NEW = readFileSync(new URL('../supabase/kurulum.sql', import.meta.url), 'utf8');
 const MIG = readFileSync(new URL('../supabase/guncelleme-2026-11-06-calisma-takibi.sql', import.meta.url), 'utf8');
-// Bu özellikten önceki kurulum (gerçek veritabanının bugünkü hali)
-const OLD = execSync('git show f0b3a56:supabase/kurulum.sql', { cwd: new URL('..', import.meta.url).pathname }).toString();
+// Bu özellikten önceki kurulum = bugünkü kurulum dosyasının çalışma takibi bölümü çıkarılmış hali
+const OLD = NEW.slice(0, NEW.indexOf('-- ───────────── ÇALIŞMA TAKİBİ'));
 
 const U = { t: '00000000-0000-0000-0000-00000000000a', pA: '00000000-0000-0000-0000-0000000000a1', sA: '00000000-0000-0000-0000-0000000000a2', pB: '00000000-0000-0000-0000-0000000000b1', sB: '00000000-0000-0000-0000-0000000000b2' };
 const S = { A: '10000000-0000-0000-0000-00000000000a', B: '10000000-0000-0000-0000-00000000000b' };
@@ -118,64 +117,63 @@ const mk = (extra = {}) => ({
   study_logs: [], ...extra,
 });
 
-test('gün durumu: çalışma günü değil, bekleniyor, çalışmadı, çalıştı, mazeret, başlangıç tarihi öncesi', () => {
+test('gün durumu: çalışma günü değil, bugün (bekler), ertesi gün sorulur, çalıştı/çalışmadı/mazeret, başlangıç öncesi', () => {
   assert.equal(dow(MON), 1);
   const d = mk();
   assert.equal(dayStatus(d, 's1', addDays(MON, 1), NOW(addDays(MON, 1))), 'none', 'Salı çalışma günü değil');
-  assert.equal(dayStatus(d, 's1', MON, NOW(MON, '15:00')), 'waiting');
-  assert.equal(dayStatus(d, 's1', MON, NOW(MON, `${STUDY_HOUR}:00`)), 'missed', 'akşam saatinden sonra çalışmadı');
-  assert.equal(dayStatus(d, 's1', MON, NOW(addDays(MON, 1), '08:00')), 'missed', 'ertesi sabah da çalışmadı');
+  assert.equal(dayStatus(d, 's1', MON, NOW(MON, '23:30')), 'waiting', 'çalışma günü bitmeden sorulmaz');
+  assert.equal(dayStatus(d, 's1', MON, NOW(addDays(MON, 1), '08:00')), 'ask', 'ertesi gün sorulur');
   assert.equal(dayStatus(d, 's1', addDays(MON, 2), NOW(MON)), 'future');
   d.study_logs.push({ student_id: 's1', date: MON, status: 'done' });
   assert.equal(dayStatus(d, 's1', MON, NOW(addDays(MON, 3))), 'done');
-  d.study_logs.push({ student_id: 's1', date: addDays(MON, 1), status: 'done' }); // çalışma günü olmayan günde de çalışabilir
-  assert.equal(dayStatus(d, 's1', addDays(MON, 1), NOW(addDays(MON, 3))), 'done');
-  d.study_logs.push({ student_id: 's1', date: addDays(MON, 2), status: 'excused' });
-  assert.equal(dayStatus(d, 's1', addDays(MON, 2), NOW(addDays(MON, 3))), 'excused');
+  d.study_logs.push({ student_id: 's1', date: addDays(MON, 2), status: 'notdone' });
+  assert.equal(dayStatus(d, 's1', addDays(MON, 2), NOW(addDays(MON, 3))), 'notdone');
+  d.study_logs.push({ student_id: 's1', date: addDays(MON, 4), status: 'excused' });
+  assert.equal(dayStatus(d, 's1', addDays(MON, 4), NOW(addDays(MON, 5))), 'excused');
   assert.equal(dayStatus(mk({ study_plans: [{ ...mk().study_plans[0], start_date: '2026-11-04' }] }), 's1', MON, NOW('2026-11-06')), 'none', 'takip başlamadan önceki gün sayılmaz');
   assert.equal(dayStatus(d, 's2', MON, NOW(addDays(MON, 3))), 'none', 'planı olmayan öğrenci');
   assert.equal(dayStatus(mk({ study_plans: [{ ...mk().study_plans[0], enabled: false }] }), 's1', MON, NOW(addDays(MON, 3))), 'none', 'kapalı takip');
 });
 
-test('çalışmayanlar listesi: son 3 gün, ele alınan/mazeretli düşer, pasif ve kapalı öğrenci çıkmaz; mesaj metni', () => {
+test('"dün çalıştı mı?" listesi: bugün sorulmaz, ertesi gün sorulur, cevaplananlar düşer, pasif/kapalı çıkmaz; mesaj metinleri', () => {
   const d = mk();
   const fri = addDays(MON, 4); // Cuma
-  const now = NOW(fri, '22:00');
-  assert.deepEqual(studyMissed(d, now).map((m) => m.date), [fri, addDays(MON, 2)], 'Cuma + Çarşamba; Pazartesi 3 günden eski ise çıkmaz');
-  assert.deepEqual(studyMissed(d, NOW(addDays(MON, 3), '10:00')).map((m) => m.date), [addDays(MON, 2), MON]);
-  d.study_logs.push({ student_id: 's1', date: fri, status: 'handled' }, { student_id: 's1', date: addDays(MON, 2), status: 'excused' });
-  assert.deepEqual(studyMissed(d, now), []);
-  assert.deepEqual(studyMissed(mk({ students: [{ id: 's1', name: 'Ali', active: false }] }), now), []);
-  assert.deepEqual(studyWaiting(mk(), NOW(fri, '10:00')).map((s) => s.name), ['Ali']);
-  assert.equal(msgStudyMissed('Ali', fri, fri), 'Sayın veli, Ali bugün planlanan matematik çalışmasını yapmadı. Çalışmasını tamamlamasına destek olursanız sevinirim.');
-  assert.match(msgStudyMissed('Ali', MON, fri), /2 Kasım günü/);
+  assert.deepEqual(studyAsk(d, NOW(fri, '22:00')).map((m) => m.date), [addDays(MON, 2)], 'Cuma akşamı bile sorulmaz; yalnız Çarşamba (Pazartesi 3 günden eski)');
+  const sat = addDays(MON, 5);
+  assert.deepEqual(studyAsk(d, NOW(sat, '09:00')).map((m) => m.date), [fri, addDays(MON, 2)], 'Cumartesi sabahı: dün (Cuma) + Çarşamba');
+  d.study_logs.push({ student_id: 's1', date: fri, status: 'done' }, { student_id: 's1', date: addDays(MON, 2), status: 'notdone' });
+  assert.deepEqual(studyAsk(d, NOW(sat)), []);
+  assert.deepEqual(studyAsk(mk({ students: [{ id: 's1', name: 'Ali', active: false }] }), NOW(sat)), []);
+  assert.equal(msgStudyDone('Ali', fri, sat), 'Sayın veli, Ali söz verdiği gibi dün matematik çalışmasını yapmıştır. Emeği için teşekkür ederim.');
+  assert.equal(msgStudyNotDone('Ali', fri, sat), 'Sayın veli, Ali söz verdiği halde dün matematik çalışmasını yapmamıştır, ödevini tamamlamamıştır. Çalışmasını tamamlamasına destek olursanız sevinirim.');
+  assert.match(msgStudyNotDone('Ali', MON, sat), /2 Kasım günü/);
 });
 
-test('hafta özeti: Pzt-Paz 7 gün, planlanan ve yapılan sayısı', () => {
+test('hafta özeti: Pzt-Paz 7 gün, planlanan ve cevaplanan sayısı', () => {
   const d = mk();
   d.study_logs.push({ student_id: 's1', date: MON, status: 'done' });
   const w = studyWeek(d, 's1', NOW(addDays(MON, 4), '22:00'));
   assert.equal(w.days.length, 7);
-  assert.deepEqual(w.days.map((x) => x.status), ['done', 'none', 'missed', 'none', 'missed', 'none', 'none']);
-  assert.deepEqual([w.planned, w.done, w.due], [3, 1, 3]);
+  assert.deepEqual(w.days.map((x) => x.status), ['done', 'none', 'ask', 'none', 'waiting', 'none', 'none']);
+  assert.deepEqual([w.planned, w.done, w.due], [3, 1, 1]);
 });
 
-test('rastgele oturum: kapalı/planı yok öğrenci asla uyarı üretmez, çalışan asla "çalışmadı" olmaz, her uyarı gerçek bir çalışma günü', () => {
+test('rastgele oturum: kapalı/planı yok öğrenci asla soru üretmez, cevaplanan gün tekrar sorulmaz, her soru geçmiş gerçek bir çalışma günü', () => {
   let seed = 424242;
   const rnd = (n) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
   for (let round = 0; round < 400; round++) {
     const students = Array.from({ length: 6 }, (_, i) => ({ id: `s${i}`, name: `Öğr ${i}`, active: rnd(5) > 0 }));
     const study_plans = students.filter(() => rnd(3) > 0).map((s, i) => ({ id: `p${i}`, student_id: s.id, enabled: rnd(3) > 0, days: [1, 2, 3, 4, 5, 6, 7].filter(() => rnd(2) === 0), start_date: addDays(MON, -rnd(20)) }));
     const study_logs = [];
-    for (let k = 0; k < 40; k++) study_logs.push({ student_id: `s${rnd(6)}`, date: addDays(MON, -rnd(25)), status: ['done', 'done', 'excused', 'handled'][rnd(4)] });
+    for (let k = 0; k < 40; k++) study_logs.push({ student_id: `s${rnd(6)}`, date: addDays(MON, -rnd(25)), status: ['done', 'notdone', 'excused'][rnd(3)] });
     const d = { students, study_plans, study_logs };
-    const now = NOW(addDays(MON, rnd(20) - 5), `${String(rnd(24)).padStart(2, '0')}:00`);
-    for (const m of studyMissed(d, now)) {
+    const now = NOW(addDays(MON, rnd(20) - 5), '10:00');
+    for (const m of studyAsk(d, now)) {
       const plan = planOf(d, m.student_id);
-      assert.ok(plan, `round ${round}: planı açık değil ama uyarı var`);
+      assert.ok(plan, `round ${round}: planı açık değil ama soru var`);
       assert.ok(students.find((s) => s.id === m.student_id).active !== false, 'pasif öğrenci');
-      assert.ok(plan.days.includes(dow(m.date)) && m.date >= plan.start_date && m.date <= now.date, 'çalışma günü değil');
-      assert.ok(!study_logs.some((l) => l.student_id === m.student_id && l.date === m.date), 'kayıt varken uyarı');
+      assert.ok(plan.days.includes(dow(m.date)) && m.date >= plan.start_date && m.date < now.date, 'geçmiş çalışma günü değil');
+      assert.ok(!study_logs.some((l) => l.student_id === m.student_id && l.date === m.date), 'kayıt varken soru');
     }
     for (const s of students) { const w = studyWeek(d, s.id, now); assert.ok(w.done <= 7 && w.days.length === 7); if (!planOf(d, s.id)) assert.ok(w.days.every((x) => x.status === 'none')); }
   }

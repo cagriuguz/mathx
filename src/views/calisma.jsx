@@ -1,11 +1,11 @@
-// ÇALIŞMA TAKİBİ ekranları: öğretmen (öğrenci kartında gün seçimi + panelde çalışmayanlar), öğrenci ("Çalıştım"), veli (hafta özeti).
+// ÇALIŞMA TAKİBİ ekranları: öğretmen (öğrenci kartında gün seçimi + panelde "dün çalıştı mı?" sorusu), veli (hafta özeti).
 import { useState } from 'preact/hooks';
 import { useApp, useAction, Icon, WaButton, Empty } from '../ui.jsx';
-import { TR_DAYS_SHORT, fmtShort, dow } from '../core/dates.js';
-import { planOf, dayStatus, studyWeek, studyMissed, studyWaiting, msgStudyMissed, STUDY_HOUR } from '../core/calisma.js';
+import { TR_DAYS_SHORT, fmtShort, addDays } from '../core/dates.js';
+import { planOf, studyWeek, studyAsk, msgStudyDone, msgStudyNotDone } from '../core/calisma.js';
 
-const MARK = { done: '✓', missed: '✕', excused: 'M', handled: '✕', waiting: '·', future: '·', none: '' };
-const LABEL = { done: 'çalıştı', missed: 'çalışmadı', excused: 'mazeretli', handled: 'çalışmadı', waiting: 'bekleniyor', future: '', none: '' };
+const MARK = { done: '✓', notdone: '✕', excused: 'M', ask: '?', waiting: '·', future: '·', none: '' };
+const LABEL = { done: 'çalıştı', notdone: 'çalışmadı', excused: 'mazeretli', ask: 'sorulacak', waiting: 'bugün', future: '', none: '' };
 
 /** Haftalık 7 kutu: Pzt-Paz; çalışma günü olmayan günler boş görünür */
 export function StudyWeekStrip({ studentId }) {
@@ -62,7 +62,7 @@ export function StudyPlanSection({ s }) {
                 <div class="seg seven">
                   {TR_DAYS_SHORT.map((l, i) => <button type="button" key={l} aria-pressed={days.includes(i + 1)} onClick={() => toggle(i + 1)}>{l}</button>)}
                 </div>
-                <div class="hint">Seçilen günlerde öğrenci "Çalıştım" der. Akşam {STUDY_HOUR}:00'ye kadar demezse Panel'de görünür; veliye tek dokunuşla mesaj gönderirsiniz.</div>
+                <div class="hint">Seçilen günün ertesinde Panel'de "çalıştı mı?" diye sorulur. Evet ya da Hayır dersiniz; veliye hazır WhatsApp mesajı açılır.</div>
               </>
             )}
             {!enabled && <div class="hint">Kapalıyken bu öğrenci için hiçbir uyarı ya da liste çıkmaz.</div>}
@@ -77,65 +77,39 @@ export function StudyPlanSection({ s }) {
   );
 }
 
-/** Öğretmen paneli: bugün çalışmayanlar + son günlerde çalışmayıp ele alınmamışlar */
+/** Öğretmen paneli: "dün matematik çalışacaktı, çalıştı mı?" Evet → veliye "çalışmıştır", Hayır → "çalışmamıştır" */
 export function StudyPanelSection() {
   const { data, now, store, reload } = useApp();
   const [run] = useAction();
-  const anyOn = (data.study_plans || []).some((p) => p.enabled);
-  if (!anyOn) return null;
-  const missed = studyMissed(data, now);
-  const waiting = studyWaiting(data, now);
+  if (!(data.study_plans || []).some((p) => p.enabled)) return null;
+  const asks = studyAsk(data, now);
   const byId = new Map(data.students.map((s) => [s.id, s]));
   const mark = (m, status) => run(async () => { await store.insert('study_logs', { student_id: m.student_id, date: m.date, status, note: '' }); await reload(); });
+  const when = (d) => (d === addDays(now.date, -1) ? 'Dün' : `${fmtShort(d)} günü`);
   return (
     <section>
-      <div class="section-head"><h2 class="section-title">Çalışma takibi</h2>{missed.length > 0 && <span class="chip bad">{missed.length}</span>}</div>
+      <div class="section-head"><h2 class="section-title">Çalışma takibi</h2>{asks.length > 0 && <span class="chip bad">{asks.length}</span>}</div>
       <div class="card">
-        {missed.length === 0 && waiting.length === 0 ? <Empty title="Çalışmayan öğrenci yok ✓">Çalışma günü olup "Çalıştım" demeyenler akşam {STUDY_HOUR}:00'den sonra burada görünür.</Empty> : (
+        {asks.length === 0 ? <Empty title="Sorulacak çalışma yok ✓">Çalışma günü geçen öğrenciler için ertesi gün "çalıştı mı?" sorusu burada çıkar.</Empty> : (
           <ul class="list">
-            {missed.map((m) => (
-              <li key={m.key} class="stack">
-                <div class="spread"><span class="item-title">{m.name}</span><span class="chip bad">Çalışmadı</span></div>
-                <div class="small muted">{fmtShort(m.date)} {m.date === now.date ? '(bugün)' : ''} çalışma günüydü, "Çalıştım" demedi</div>
-                <div class="row wrap">
-                  <WaButton small phone={byId.get(m.student_id)?.parent_phone} text={msgStudyMissed(m.name, m.date, now.date)} label="Veliye bildir" onSent={() => mark(m, 'handled')} />
-                  <button class="btn small" onClick={() => mark(m, 'excused')}>Mazeretli</button>
-                  <button class="btn small ghost" onClick={() => mark(m, 'handled')}>Ele aldım</button>
-                </div>
-              </li>
-            ))}
-            {waiting.length > 0 && <li class="small muted">Bugün bekleniyor ({STUDY_HOUR}:00'e kadar): {waiting.map((s) => s.name).join(', ')}</li>}
+            {asks.map((m) => {
+              const phone = byId.get(m.student_id)?.parent_phone;
+              return (
+                <li key={m.key} class="stack">
+                  <div class="item-title">{m.name} · {when(m.date)} matematik çalışacaktı</div>
+                  <div class="small muted">Çalıştı mı? Cevabınıza göre veliye mesaj hazırlanır.</div>
+                  <div class="row wrap">
+                    <WaButton small phone={phone} text={msgStudyDone(m.name, m.date, now.date)} label="Evet, çalıştı" onSent={() => mark(m, 'done')} />
+                    <WaButton small phone={phone} text={msgStudyNotDone(m.name, m.date, now.date)} label="Hayır, çalışmadı" onSent={() => mark(m, 'notdone')} />
+                    <button class="btn small ghost" onClick={() => mark(m, 'excused')}>Mazeretli (mesaj yok)</button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
     </section>
-  );
-}
-
-/** Öğrenci: bugün çalışma günüyse "Çalıştım" düğmesi + hafta özeti. Takip kapalıysa hiçbir şey göstermez. */
-export function StudyToday() {
-  const { data, now, store, reload } = useApp();
-  const [run, busy] = useAction();
-  const [note, setNote] = useState('');
-  const sid = data.study_plans?.[0]?.student_id;
-  const plan = sid ? planOf(data, sid) : null;
-  if (!plan) return null;
-  const st = dayStatus(data, sid, now.date, now);
-  const isToday = plan.days.includes(dow(now.date));
-  const finished = st === 'done';
-  return (
-    <div class="card card-pad stack">
-      <div class="spread"><b>Matematik çalışması</b><span class={`chip ${finished ? 'ok' : isToday ? 'warn' : 'info'}`}>{finished ? 'Bugün tamam ✓' : isToday ? 'Bugün çalışma günün' : 'Bugün çalışma günü değil'}</span></div>
-      <StudyWeekStrip studentId={sid} />
-      {!finished && (
-        <>
-          <input class="input" maxLength={60} placeholder="İstersen kısa not (ne çalıştın?)" value={note} onInput={(e) => setNote(e.currentTarget.value)} />
-          <button class="btn primary" disabled={busy} onClick={() => run(async () => { await store.logStudy(note); setNote(''); await reload(); }, 'Aferin! Çalışman kaydedildi.')}>
-            <Icon name="check" /> Bugün çalıştım
-          </button>
-        </>
-      )}
-    </div>
   );
 }
 

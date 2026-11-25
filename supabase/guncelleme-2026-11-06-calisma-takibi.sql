@@ -1,6 +1,6 @@
 -- ÇALIŞMA TAKİBİ (6 Kasım 2026) — YALNIZCA YENİ TABLO EKLER; mevcut hiçbir tabloya/satıra dokunmaz.
 -- Öğrenci başına: takip açık/kapalı (varsayılan KAPALI) + haftada çalışacağı günler.
--- Öğrenci o günlerde "Çalıştım" der (log_study); çalışmadıysa öğretmen panelinde görünür, veliye mesaj gider.
+-- Ertesi gün öğretmen panelinde "çalıştı mı?" sorulur; Evet/Hayır'a göre veliye WhatsApp mesajı hazırlanır.
 -- Güvenle birden çok kez çalıştırılabilir (if not exists / or replace / drop policy if exists).
 
 create table if not exists public.study_plans (
@@ -16,12 +16,15 @@ create table if not exists public.study_logs (
   id uuid primary key default gen_random_uuid(),
   student_id uuid not null references public.students(id) on delete cascade,
   date date not null,
-  status text not null default 'done' check (status in ('done', 'excused', 'handled')),
-  -- done: öğrenci "çalıştım" dedi · excused: öğretmen mazeretli saydı · handled: öğretmen veliye bildirdi / ele aldı
+  status text not null default 'done' check (status in ('done', 'notdone', 'excused', 'handled')),
+  -- done: öğretmen "çalıştı" dedi · notdone: "çalışmadı" dedi · excused: mazeretli · handled: eski kayıt
   note text default '' check (char_length(note) <= 60),
   created_at timestamptz default now(),
   unique (student_id, date)
 );
+-- (Tablo önceden 3 durumla kurulduysa kısıtı genişlet)
+alter table public.study_logs drop constraint if exists study_logs_status_check;
+alter table public.study_logs add constraint study_logs_status_check check (status in ('done', 'notdone', 'excused', 'handled'));
 create index if not exists study_logs_student_idx on public.study_logs(student_id, date);
 
 alter table public.study_plans enable row level security;
